@@ -280,10 +280,10 @@ const STRATEGIC_PRESETS: StrategicPreset[] = [
     v4Fee: 0,
     v4TickSpacing: 0,
     v4Hooks: ZERO_ADDR,
-    buyPriceUsd: "0.0003497",
+    buyPriceUsd: "", // computed from operations
     buyMarketCapUsd: "35000000",
-    entryDate: "2026-03-18",
-    entryTxHash: "",
+    entryDate: "2026-04-06",
+    entryTxHash: "0xd53e31aa6d385ffc7591af5d72b365af310da559c817e75c37aeaacd59e6a0b8",
   },
   {
     ticker: "DRB",
@@ -297,10 +297,10 @@ const STRATEGIC_PRESETS: StrategicPreset[] = [
     v4Fee: 0,
     v4TickSpacing: 0,
     v4Hooks: ZERO_ADDR,
-    buyPriceUsd: "0.00008909",
+    buyPriceUsd: "", // computed from operations
     buyMarketCapUsd: "9000000",
-    entryDate: "2026-03-18",
-    entryTxHash: "",
+    entryDate: "2026-04-06",
+    entryTxHash: "0x629e9b161c0ebc42afb619c76c7e74f30c42cff474864690132544afdd7735ec",
   },
   {
     ticker: "Clanker",
@@ -349,10 +349,10 @@ const STRATEGIC_PRESETS: StrategicPreset[] = [
     v4Fee: 8388608,
     v4TickSpacing: 200,
     v4Hooks: V4_HOOKS,
-    buyPriceUsd: "0.000028",
+    buyPriceUsd: "", // computed from operations
     buyMarketCapUsd: "2800000",
-    entryDate: "2026-03-18",
-    entryTxHash: "",
+    entryDate: "2026-04-06",
+    entryTxHash: "0xe155eaae48be06fea5c1bd7fe2831f10b15f6d4a07be1fa09e32469c97a39d82",
   },
   {
     ticker: "JUNO",
@@ -421,6 +421,7 @@ type Operation = {
 };
 
 // Historical ops — USD values for burns are computed dynamically from live price
+// StrategicBuy ops carry wethSpent + tokenReceived so buy-price is computed from real execution data
 const HISTORICAL_OPS_RAW = [
   {
     type: "Buyback" as const,
@@ -457,6 +458,43 @@ const HISTORICAL_OPS_RAW = [
     date: "2026-03-18",
     txHash: "0xb8df47dcd3ff0e07efa98007360dba7d0ab74058bd283163c9db397d34913f96",
     tusdAmount: 1_000,
+  },
+  // ── Strategic Buys (real on-chain execution data) ──
+  {
+    type: "StrategicBuy" as const,
+    amount: "3,450,980 BNKR",
+    token: "BNKR",
+    usdValue: "", // computed dynamically from wethSpent * wethPrice
+    date: "2026-04-06",
+    txHash: "0xd53e31aa6d385ffc7591af5d72b365af310da559c817e75c37aeaacd59e6a0b8",
+    tusdAmount: 0,
+    wethSpent: 0.5,
+    tokenReceived: 3_450_980.479447143,
+    strategicToken: "0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3b",
+  },
+  {
+    type: "StrategicBuy" as const,
+    amount: "10,871,348 DRB",
+    token: "DRB",
+    usdValue: "",
+    date: "2026-04-06",
+    txHash: "0x629e9b161c0ebc42afb619c76c7e74f30c42cff474864690132544afdd7735ec",
+    tusdAmount: 0,
+    wethSpent: 0.5,
+    tokenReceived: 10_871_348.083552439,
+    strategicToken: "0x3ec2156D4c0A9CBdAB4a016633b7BcF6a8d68Ea2",
+  },
+  {
+    type: "StrategicBuy" as const,
+    amount: "38,009,374 CLAWD",
+    token: "CLAWD",
+    usdValue: "",
+    date: "2026-04-06",
+    txHash: "0xe155eaae48be06fea5c1bd7fe2831f10b15f6d4a07be1fa09e32469c97a39d82",
+    tusdAmount: 0,
+    wethSpent: 0.5,
+    tokenReceived: 38_009_374.872033096,
+    strategicToken: "0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07",
   },
 ];
 
@@ -1292,6 +1330,8 @@ const Home: NextPage = () => {
   const [stratShowUsd, setStratShowUsd] = useState<Set<number>>(new Set());
   // Sort state: column + direction. null = default (date desc = newest first)
   const [opsSort, setOpsSort] = useState<{ col: "date" | "amount" | "usd"; dir: "asc" | "desc" } | null>(null);
+  // Strategic table sort state
+  const [stratSort, setStratSort] = useState<{ col: "amount" | "usd" | "buyprice" | "entry" | "roi"; dir: "asc" | "desc" } | null>(null);
   const { address: connectedAddress } = useAccount();
 
   // ── Dynamic owner & operator reads ──
@@ -1501,7 +1541,9 @@ const Home: NextPage = () => {
   const wethBalUsd = wethBalNum * wethPriceUsd;
   const usdcBalUsd = usdcBalNum;
 
-  const totalManagedUsd = tusdBalUsd + wethBalUsd + usdcBalUsd;
+  // totalManagedUsd includes strategic token holdings (computed after strategicRows below)
+  // We define the base first, then add strategic total after it's computed
+  const baseManagedUsd = tusdBalUsd + wethBalUsd + usdcBalUsd;
 
   const burnPct = tusdSupplyNum > 0 ? (tusdBurnedNum / tusdSupplyNum) * 100 : 0;
   const burnUsd = tusdBurnedNum * tusdPriceUsd;
@@ -1549,7 +1591,35 @@ const Home: NextPage = () => {
     currentPrice: number;
     valueUsd: number;
     roi: number | null;
+    /** Buy price USD derived from operations (weighted average if multiple buys) */
+    computedBuyPrice: number;
+    /** Date of most recent StrategicBuy/StrategicSell operation for this token */
+    lastOpDate: string;
+    /** Tx hash of the first buy (for the Tx link) */
+    firstBuyTxHash: string;
   };
+
+  // Build a map of buy-price data from HISTORICAL_OPS_RAW StrategicBuy entries
+  const buyDataByToken = useMemo(() => {
+    const m: Record<string, { totalWeth: number; totalTokens: number; firstTx: string; firstDate: string; lastDate: string }> = {};
+    for (const op of HISTORICAL_OPS_RAW) {
+      if (op.type !== "StrategicBuy" || !("strategicToken" in op)) continue;
+      const key = (op as { strategicToken: string }).strategicToken.toLowerCase();
+      const weth = (op as { wethSpent: number }).wethSpent || 0;
+      const tokens = (op as { tokenReceived: number }).tokenReceived || 0;
+      if (!m[key]) {
+        m[key] = { totalWeth: 0, totalTokens: 0, firstTx: op.txHash, firstDate: op.date, lastDate: op.date };
+      }
+      m[key].totalWeth += weth;
+      m[key].totalTokens += tokens;
+      if (op.date > m[key].lastDate) m[key].lastDate = op.date;
+      if (op.date < m[key].firstDate) {
+        m[key].firstDate = op.date;
+        m[key].firstTx = op.txHash;
+      }
+    }
+    return m;
+  }, []);
 
   const strategicRows: StrategicRow[] = [
     {
@@ -1558,6 +1628,9 @@ const Home: NextPage = () => {
       currentPrice: bnkrPrice,
       valueUsd: 0,
       roi: null,
+      computedBuyPrice: 0,
+      lastOpDate: "",
+      firstBuyTxHash: "",
     },
     {
       preset: STRATEGIC_PRESETS[1],
@@ -1565,6 +1638,9 @@ const Home: NextPage = () => {
       currentPrice: drbPrice,
       valueUsd: 0,
       roi: null,
+      computedBuyPrice: 0,
+      lastOpDate: "",
+      firstBuyTxHash: "",
     },
     {
       preset: STRATEGIC_PRESETS[2],
@@ -1572,6 +1648,9 @@ const Home: NextPage = () => {
       currentPrice: clankerPrice,
       valueUsd: 0,
       roi: null,
+      computedBuyPrice: 0,
+      lastOpDate: "",
+      firstBuyTxHash: "",
     },
     {
       preset: STRATEGIC_PRESETS[3],
@@ -1579,6 +1658,9 @@ const Home: NextPage = () => {
       currentPrice: kellyPrice,
       valueUsd: 0,
       roi: null,
+      computedBuyPrice: 0,
+      lastOpDate: "",
+      firstBuyTxHash: "",
     },
     {
       preset: STRATEGIC_PRESETS[4],
@@ -1586,6 +1668,9 @@ const Home: NextPage = () => {
       currentPrice: clawdPrice,
       valueUsd: 0,
       roi: null,
+      computedBuyPrice: 0,
+      lastOpDate: "",
+      firstBuyTxHash: "",
     },
     {
       preset: STRATEGIC_PRESETS[5],
@@ -1593,6 +1678,9 @@ const Home: NextPage = () => {
       currentPrice: junoPrice,
       valueUsd: 0,
       roi: null,
+      computedBuyPrice: 0,
+      lastOpDate: "",
+      firstBuyTxHash: "",
     },
     {
       preset: STRATEGIC_PRESETS[6],
@@ -1600,15 +1688,35 @@ const Home: NextPage = () => {
       currentPrice: felixPrice,
       valueUsd: 0,
       roi: null,
+      computedBuyPrice: 0,
+      lastOpDate: "",
+      firstBuyTxHash: "",
     },
   ]
     .map(row => {
       const valueUsd = row.balance * row.currentPrice;
-      const buyPrice = Number(row.preset.buyPriceUsd);
+      // Compute buy price from operations data (weighted average WETH cost → USD)
+      const bd = buyDataByToken[row.preset.token.toLowerCase()];
+      let buyPrice: number;
+      let lastOpDate: string;
+      let firstBuyTxHash: string;
+      if (bd && bd.totalTokens > 0) {
+        // Price per token in WETH, then convert to USD with current WETH price
+        buyPrice = (bd.totalWeth / bd.totalTokens) * wethPriceUsd;
+        lastOpDate = bd.lastDate;
+        firstBuyTxHash = bd.firstTx;
+      } else {
+        // Fallback to preset if no operations exist yet
+        buyPrice = Number(row.preset.buyPriceUsd);
+        lastOpDate = row.preset.entryDate;
+        firstBuyTxHash = row.preset.entryTxHash;
+      }
       const roi = row.currentPrice > 0 && buyPrice > 0 ? ((row.currentPrice - buyPrice) / buyPrice) * 100 : null;
-      return { ...row, valueUsd, roi };
+      return { ...row, valueUsd, roi, computedBuyPrice: buyPrice, lastOpDate, firstBuyTxHash };
     })
-    .filter(row => row.balance > 0);
+    .filter(row => row.balance > 0)
+    // Sort by most recent operation first (newest → oldest)
+    .sort((a, b) => b.lastOpDate.localeCompare(a.lastOpDate));
 
   const hasStrategicTokens = strategicRows.length > 0;
 
@@ -1626,6 +1734,7 @@ const Home: NextPage = () => {
   }, [bnkrPrice, drbPrice, clankerPrice, kellyPrice, clawdPrice, junoPrice, felixPrice]);
 
   const strategicTotalUsd = strategicRows.reduce((sum, r) => sum + r.valueUsd, 0);
+  const totalManagedUsd = baseManagedUsd + strategicTotalUsd;
 
   // ── Chart data: on-chain Transfer events → stacked daily snapshots ──
   type DailySnapshot = { date: string; tusd: number; weth: number; usdc: number; strategic: number };
@@ -1754,15 +1863,25 @@ const Home: NextPage = () => {
   }, [publicClient, wethPriceUsd, tusdPriceUsd, tusdBalUsd, wethBalUsd, usdcBalUsd, strategicTotalUsd, strategicPriceMap]);
 
   const filteredOps = useMemo(() => {
-    const allOps: Operation[] = HISTORICAL_OPS_RAW.map(op => ({
-      type: op.type,
-      amount: op.amount,
-      token: op.token,
-      usdValue: op.tusdAmount > 0 && tusdPriceUsd > 0 ? fmtUsd(op.tusdAmount * tusdPriceUsd) : op.usdValue || "\u2014",
-      date: op.date,
-      txHash: op.txHash,
-      roiPct: (op as Record<string, unknown>).roiPct as number | undefined,
-    }));
+    const allOps: Operation[] = HISTORICAL_OPS_RAW.map(op => {
+      let usdValue: string;
+      if (op.tusdAmount > 0 && tusdPriceUsd > 0) {
+        usdValue = fmtUsd(op.tusdAmount * tusdPriceUsd);
+      } else if (op.type === "StrategicBuy" && "wethSpent" in op && wethPriceUsd > 0) {
+        usdValue = fmtUsd((op as { wethSpent: number }).wethSpent * wethPriceUsd);
+      } else {
+        usdValue = op.usdValue || "\u2014";
+      }
+      return {
+        type: op.type,
+        amount: op.amount,
+        token: op.token,
+        usdValue,
+        date: op.date,
+        txHash: op.txHash,
+        roiPct: (op as Record<string, unknown>).roiPct as number | undefined,
+      };
+    });
 
     // Only add a dynamic entry for NEW BurnEngine burns beyond the known historical ones
     const newEngineBurned = engineBurned - KNOWN_ENGINE_BURNED;
@@ -1804,7 +1923,7 @@ const Home: NextPage = () => {
     }
 
     return filtered;
-  }, [opsFilter, engineCycles, engineBurned, tusdPriceUsd, engineLastCycle, opsSort]);
+  }, [opsFilter, engineCycles, engineBurned, tusdPriceUsd, wethPriceUsd, engineLastCycle, opsSort]);
 
   // Sort toggle: click once = desc, click again = asc, click again = reset to default (date desc)
   const toggleSort = (col: "date" | "amount" | "usd") => {
@@ -1819,6 +1938,36 @@ const Home: NextPage = () => {
     if (!opsSort || opsSort.col !== col) return "↕";
     return opsSort.dir === "desc" ? "↓" : "↑";
   };
+
+  // ── Strategic table sort helpers ──
+  type StratSortCol = "amount" | "usd" | "buyprice" | "entry" | "roi";
+  const toggleStratSort = (col: StratSortCol) => {
+    setStratSort(prev => {
+      if (!prev || prev.col !== col) return { col, dir: "desc" as const };
+      if (prev.dir === "desc") return { col, dir: "asc" as const };
+      return null;
+    });
+  };
+  const stratSortIcon = (col: StratSortCol) => {
+    if (!stratSort || stratSort.col !== col) return "↕";
+    return stratSort.dir === "desc" ? "↓" : "↑";
+  };
+
+  const sortedStrategicRows = useMemo(() => {
+    if (!stratSort) return strategicRows; // default: already sorted by most recent op
+    const rows = [...strategicRows];
+    const { col, dir } = stratSort;
+    rows.sort((a, b) => {
+      let cmp = 0;
+      if (col === "amount") cmp = a.balance - b.balance;
+      else if (col === "usd") cmp = a.valueUsd - b.valueUsd;
+      else if (col === "buyprice") cmp = a.computedBuyPrice - b.computedBuyPrice;
+      else if (col === "entry") cmp = a.lastOpDate.localeCompare(b.lastOpDate);
+      else if (col === "roi") cmp = (a.roi ?? -Infinity) - (b.roi ?? -Infinity);
+      return dir === "asc" ? cmp : -cmp;
+    });
+    return rows;
+  }, [strategicRows, stratSort]);
 
   const badgeColor: Record<string, string> = {
     Buyback: "#34eeb6",
@@ -1894,7 +2043,7 @@ const Home: NextPage = () => {
             value={usdcBalNum > 0 ? `${fmtBig(usdcBalNum)} USDC` : "0 USDC"}
             subtitle={usdcBalUsd > 0 ? fmtUsd(usdcBalUsd) : "\u2014"}
           />
-          <StatCard title="Strategic Portfolio" value={fmtUsd(totalManagedUsd)} subtitle="(Combined token value)" />
+          <StatCard title="Strategic Portfolio" value={fmtUsd(strategicTotalUsd)} subtitle="(Combined token value)" />
         </div>
       </div>
 
@@ -1906,6 +2055,36 @@ const Home: NextPage = () => {
             className="rounded-xl overflow-hidden text-xs sm:text-sm"
             style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
           >
+            {/* Sort bar — horizontal scroll on mobile, matching operations table style */}
+            <div
+              className="flex gap-2 p-3 sm:p-4 overflow-x-auto flex-nowrap"
+              style={{ borderBottom: `1px solid ${CARD_BORDER}`, WebkitOverflowScrolling: "touch" }}
+            >
+              {(
+                [
+                  { col: "amount" as const, label: "Amount" },
+                  { col: "usd" as const, label: "USD Value" },
+                  { col: "buyprice" as const, label: "Buy Price" },
+                  { col: "entry" as const, label: "Date" },
+                  { col: "roi" as const, label: "ROI" },
+                ] as const
+              ).map(({ col, label }) => (
+                <button
+                  key={col}
+                  onClick={() => toggleStratSort(col)}
+                  className="btn btn-xs sm:btn-sm shrink-0"
+                  style={{
+                    background: stratSort?.col === col ? GOLD : "transparent",
+                    border: `1px solid ${stratSort?.col === col ? GOLD : "#4f4f4f"}`,
+                    color: stratSort?.col === col ? "#000" : "#888",
+                    fontSize: "12px",
+                  }}
+                >
+                  {label} <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{stratSortIcon(col)}</span>
+                </button>
+              ))}
+            </div>
+
             <div className="overflow-x-auto">
               <table className="table table-xs sm:table-sm w-full" style={{ color: "#e8e8e8" }}>
                 <thead>
@@ -1917,34 +2096,39 @@ const Home: NextPage = () => {
                       Token
                     </th>
                     <th
-                      className="text-[10px] sm:text-xs uppercase tracking-wider"
-                      style={{ color: TEXT_MUTED, background: "transparent" }}
+                      className="text-[10px] sm:text-xs uppercase tracking-wider cursor-pointer select-none"
+                      style={{ color: stratSort?.col === "amount" ? "#fff" : TEXT_MUTED, background: "transparent" }}
+                      onClick={() => toggleStratSort("amount")}
                     >
-                      Amount
+                      Amount <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{stratSortIcon("amount")}</span>
                     </th>
                     <th
-                      className="text-[10px] sm:text-xs uppercase tracking-wider hidden sm:table-cell"
-                      style={{ color: TEXT_MUTED, background: "transparent" }}
+                      className="text-[10px] sm:text-xs uppercase tracking-wider hidden sm:table-cell cursor-pointer select-none"
+                      style={{ color: stratSort?.col === "usd" ? "#fff" : TEXT_MUTED, background: "transparent" }}
+                      onClick={() => toggleStratSort("usd")}
                     >
-                      USD Value
+                      USD Value <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{stratSortIcon("usd")}</span>
                     </th>
                     <th
-                      className="text-[10px] sm:text-xs uppercase tracking-wider hidden sm:table-cell"
-                      style={{ color: TEXT_MUTED, background: "transparent" }}
+                      className="text-[10px] sm:text-xs uppercase tracking-wider hidden sm:table-cell cursor-pointer select-none"
+                      style={{ color: stratSort?.col === "buyprice" ? "#fff" : TEXT_MUTED, background: "transparent" }}
+                      onClick={() => toggleStratSort("buyprice")}
                     >
-                      Buy Price
+                      Buy Price <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{stratSortIcon("buyprice")}</span>
                     </th>
                     <th
-                      className="text-[10px] sm:text-xs uppercase tracking-wider"
-                      style={{ color: TEXT_MUTED, background: "transparent" }}
+                      className="text-[10px] sm:text-xs uppercase tracking-wider cursor-pointer select-none"
+                      style={{ color: stratSort?.col === "entry" ? "#fff" : TEXT_MUTED, background: "transparent" }}
+                      onClick={() => toggleStratSort("entry")}
                     >
-                      Entry
+                      Entry <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{stratSortIcon("entry")}</span>
                     </th>
                     <th
-                      className="text-[10px] sm:text-xs uppercase tracking-wider"
-                      style={{ color: TEXT_MUTED, background: "transparent" }}
+                      className="text-[10px] sm:text-xs uppercase tracking-wider cursor-pointer select-none"
+                      style={{ color: stratSort?.col === "roi" ? "#fff" : TEXT_MUTED, background: "transparent" }}
+                      onClick={() => toggleStratSort("roi")}
                     >
-                      ROI
+                      ROI <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{stratSortIcon("roi")}</span>
                     </th>
                     <th
                       className="text-[10px] sm:text-xs uppercase tracking-wider"
@@ -1955,14 +2139,19 @@ const Home: NextPage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {strategicRows.map((row, i) => {
+                  {sortedStrategicRows.map((row, i) => {
                     const roiColor = row.roi === null ? TEXT_DIM : row.roi >= 0 ? "#43e397" : "#ff6b6b";
                     const roiLabel = row.roi === null ? "—" : `${row.roi >= 0 ? "+" : ""}${row.roi.toFixed(0)}%`;
+                    const buyPriceFmt =
+                      row.computedBuyPrice > 0
+                        ? `$${row.computedBuyPrice
+                            .toFixed(row.computedBuyPrice >= 1 ? 2 : 8)
+                            .replace(/\.?0+$/, "")}`
+                        : "—";
                     return (
                       <tr key={row.preset.ticker} style={{ borderBottom: `1px solid #111` }}>
                         <td>
                           <span className="font-semibold text-white">{row.preset.ticker}</span>
-                          {/* V3/V4 badge removed — clean token name only */}
                         </td>
                         <td className="font-mono text-white">
                           {/* Desktop: show amount */}
@@ -1995,20 +2184,16 @@ const Home: NextPage = () => {
                           {row.valueUsd > 0 ? fmtUsd(row.valueUsd) : "—"}
                         </td>
                         <td className="hidden sm:table-cell font-mono" style={{ color: TEXT_DIM }}>
-                          {row.preset.buyPriceUsd
-                            ? `$${Number(row.preset.buyPriceUsd)
-                                .toFixed(Number(row.preset.buyPriceUsd) >= 1 ? 2 : 8)
-                                .replace(/\.?0+$/, "")}`
-                            : "—"}
+                          {buyPriceFmt}
                         </td>
-                        <td style={{ color: TEXT_DIM }}>{row.preset.entryDate || "—"}</td>
+                        <td style={{ color: TEXT_DIM }}>{row.lastOpDate || "—"}</td>
                         <td>
                           <span style={{ color: roiColor, fontWeight: 600 }}>{roiLabel}</span>
                         </td>
                         <td>
-                          {row.preset.entryTxHash ? (
+                          {row.firstBuyTxHash ? (
                             <a
-                              href={`https://basescan.org/tx/${row.preset.entryTxHash}`}
+                              href={`https://basescan.org/tx/${row.firstBuyTxHash}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="hover:underline"
@@ -2026,6 +2211,9 @@ const Home: NextPage = () => {
                 </tbody>
               </table>
             </div>
+            <p className="sm:hidden px-4 pb-3 text-[10px]" style={{ color: TEXT_DIM }}>
+              Tap amount to see USD value
+            </p>
           </div>
         </div>
       )}
