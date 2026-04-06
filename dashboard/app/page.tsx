@@ -1758,12 +1758,16 @@ const Home: NextPage = () => {
   const totalManagedUsd = baseManagedUsd + strategicTotalUsd;
 
   // ── Chart data: on-chain Transfer events → stacked daily snapshots ──
+  // Historical snapshots are fetched once (async), "Today" is appended reactively from live balances.
   type DailySnapshot = { date: string; tusd: number; weth: number; usdc: number; strategic: number };
   const publicClient = usePublicClient({ chainId: base.id });
-  const [chartData, setChartData] = useState<DailySnapshot[]>([]);
+  const [historicalSnapshots, setHistoricalSnapshots] = useState<DailySnapshot[]>([]);
+  const [historyFetched, setHistoryFetched] = useState(false);
 
+  // Fetch historical transfer events only once (or when prices/client change)
   useEffect(() => {
     if (!publicClient || wethPriceUsd === 0) return;
+    let cancelled = false;
 
     // Token → category mapping
     const tokenInfo: Record<string, { cat: "tusd" | "weth" | "usdc" | "strategic"; dec: number }> = {};
@@ -1863,25 +1867,35 @@ const Home: NextPage = () => {
           return { date: d.slice(5), tusd, weth, usdc, strategic };
         });
 
-        // Always append today's live data as final point
-        snapshots.push({
-          date: "Today",
-          tusd: tusdBalUsd,
-          weth: wethBalUsd,
-          usdc: usdcBalUsd,
-          strategic: strategicTotalUsd,
-        });
-
-        setChartData(snapshots);
+        if (!cancelled) {
+          setHistoricalSnapshots(snapshots);
+          setHistoryFetched(true);
+        }
       } catch (e) {
         console.error("Chart event fetch failed:", e);
-        // Fallback: show only today's live data
-        setChartData([
-          { date: "Today", tusd: tusdBalUsd, weth: wethBalUsd, usdc: usdcBalUsd, strategic: strategicTotalUsd },
-        ]);
+        if (!cancelled) {
+          setHistoricalSnapshots([]);
+          setHistoryFetched(true);
+        }
       }
     })();
-  }, [publicClient, wethPriceUsd, tusdPriceUsd, tusdBalUsd, wethBalUsd, usdcBalUsd, strategicTotalUsd, strategicPriceMap]);
+
+    return () => { cancelled = true; };
+  }, [publicClient, wethPriceUsd, tusdPriceUsd, strategicPriceMap]);
+
+  // Combine historical snapshots with live "Today" data reactively
+  // This ensures "Today" always reflects current balances regardless of async fetch timing
+  const chartData = useMemo(() => {
+    const today: DailySnapshot = {
+      date: "Today",
+      tusd: tusdBalUsd,
+      weth: wethBalUsd,
+      usdc: usdcBalUsd,
+      strategic: strategicTotalUsd,
+    };
+    if (!historyFetched) return [];
+    return [...historicalSnapshots, today];
+  }, [historicalSnapshots, historyFetched, tusdBalUsd, wethBalUsd, usdcBalUsd, strategicTotalUsd]);
 
   const filteredOps = useMemo(() => {
     const allOps: Operation[] = HISTORICAL_OPS_RAW.map(op => {
