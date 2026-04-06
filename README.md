@@ -17,18 +17,15 @@ On-chain treasury management for [₸USD (TurboUSD)](https://www.turbousd.com/) 
 ## Repository Structure
 
 ```
-turbousd-treasury/
 ├── contracts/           # Solidity smart contracts
 │   ├── TreasuryManager.sol
 │   ├── BurnEngine.sol
 │   ├── interfaces/
 │   └── libraries/
-├── test/                # Foundry tests (unit + fork)
-├── script/              # Deploy scripts
-├── audits/              # Security audit reports
+├── audits/              # Security audit reports (v2 + v3 PDF)
 ├── dashboard/           # Next.js frontend (deployable to Vercel)
-├── foundry.toml
-└── remappings.txt
+├── LICENCE
+└── README.md
 ```
 
 ---
@@ -89,21 +86,6 @@ npm run build
 ```
 
 Or connect the repo to Vercel with root directory set to `dashboard`.
-
----
-
-## Tests
-
-```bash
-# Install dependencies
-forge install
-
-# Unit tests (no RPC needed)
-forge test --match-contract TreasuryManagerV2Test -vv
-
-# Fork tests (requires Base RPC)
-forge test --fork-url https://mainnet.base.org -vvv
-```
 
 ---
 
