@@ -2561,7 +2561,11 @@ const Home: NextPage = () => {
               ["Operator", operatorAddr || "0x0000000000000000000000000000000000000000"],
             ] as [string, `0x${string}`][]
           ).map(([label, addr]) => {
-            const baseName = addr.toLowerCase() === "0x29c3246636977351b7f7238f77a873e62320799d" ? "turbousd.base.eth" : null;
+            const BASE_NAMES: Record<string, string> = {
+              "0x29c3246636977351b7f7238f77a873e62320799d": "turbousd.base.eth",
+              "0x2a248b2e5d22507c6b1ade62d92f59ad4516ced4": "ami9000.base.eth",
+            };
+            const baseName = BASE_NAMES[addr.toLowerCase()] || null;
             return (
               <div key={`${label}-${addr}`} className="flex justify-between items-center">
                 <span className="text-sm" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
