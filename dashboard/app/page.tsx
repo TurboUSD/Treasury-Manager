@@ -553,6 +553,11 @@ function fmtPct(n: number): string {
   return `${n.toFixed(4)}%`;
 }
 
+// ── Cache tiers (staleTime for React Query — prevents re-fetch while data is fresh) ──
+const STALE_STATIC = 24 * 60 * 60 * 1000; // 24h — owner, operator (almost never change)
+const STALE_SLOW = 4 * 60 * 60 * 1000; // 4h — prices, supply, burns, pending fees
+const STALE_MED = 30 * 60 * 1000; // 30min — balances (change only on transactions)
+
 // ── Design tokens ─────────────────────────────────────────────────────────
 const GOLD = "#43e397";
 const CARD_BG = "#0c0c0c";
@@ -972,7 +977,7 @@ function AddStrategicTokenPanel() {
     functionName: "strategicTokens",
     args: [form.token as `0x${string}`],
     chainId: base.id,
-    query: { enabled: !!form.token && form.token.length === 42 },
+    query: { enabled: !!form.token && form.token.length === 42, staleTime: STALE_STATIC },
   });
   const isAlreadyAdded = tokenConfig ? tokenConfig[0] === true : false;
 
@@ -1311,159 +1316,108 @@ const Home: NextPage = () => {
   const [stratSort, setStratSort] = useState<{ col: "amount" | "usd" | "buyprice" | "entry" | "roi"; dir: "asc" | "desc" } | null>(null);
   const { address: connectedAddress } = useAccount();
 
-  // ── Dynamic owner & operator reads ──
+  // ── Dynamic owner & operator reads (static — 24h cache) ──
   const { data: ownerAddr } = useReadContract({
     address: ACTIVE_TREASURY as `0x${string}`, abi: treasuryV2Abi, functionName: "owner", chainId: base.id,
+    query: { staleTime: STALE_STATIC },
   });
   const { data: operatorAddr } = useReadContract({
     address: ACTIVE_TREASURY as `0x${string}`, abi: treasuryV2Abi, functionName: "authorizedOperator", chainId: base.id,
+    query: { staleTime: STALE_STATIC },
   });
   const isOwner = !!(connectedAddress && ownerAddr && connectedAddress.toLowerCase() === (ownerAddr as string).toLowerCase());
 
-  // ── Pool prices ──
+  // ── Pool prices (slow — 5min cache) ──
   const { data: usdcWethSlot0 } = useReadContract({
-    address: USDC_WETH_POOL,
-    abi: poolAbi,
-    functionName: "slot0",
-    chainId: base.id,
+    address: USDC_WETH_POOL, abi: poolAbi, functionName: "slot0", chainId: base.id,
+    query: { staleTime: STALE_SLOW },
   });
   const { data: tusdPoolSlot0 } = useReadContract({
-    address: TUSD_POOL,
-    abi: poolAbi,
-    functionName: "slot0",
-    chainId: base.id,
+    address: TUSD_POOL, abi: poolAbi, functionName: "slot0", chainId: base.id,
+    query: { staleTime: STALE_SLOW },
   });
 
   const wethPriceUsd = usdcWethSlot0 ? calcWethPriceUsd(usdcWethSlot0[0]) : 0;
   const tusdPriceUsd = tusdPoolSlot0 ? calcTusdPriceUsd(tusdPoolSlot0[0], wethPriceUsd) : 0;
 
-  // ── Treasury balances ──
+  // ── Treasury balances (medium — 1min cache) ──
   const { data: tusdBal } = useReadContract({
-    address: TUSD,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
+    address: TUSD, abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    query: { staleTime: STALE_MED },
   });
   const { data: wethBal } = useReadContract({
-    address: WETH_ADDR,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
+    address: WETH_ADDR, abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    query: { staleTime: STALE_MED },
   });
   const { data: usdcBal } = useReadContract({
-    address: USDC_ADDR,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
+    address: USDC_ADDR, abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    query: { staleTime: STALE_MED },
   });
 
-  // ── TUSD locked in staking contract ──
+  // ── TUSD locked in staking contract (medium — 1min cache) ──
   const { data: tusdStakedBal } = useReadContract({
-    address: TUSD,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [STAKING_CONTRACT],
-    chainId: base.id,
+    address: TUSD, abi: erc20Abi, functionName: "balanceOf", args: [STAKING_CONTRACT], chainId: base.id,
+    query: { staleTime: STALE_MED },
   });
 
-  // ── Supply & burns ──
+  // ── Supply & burns (slow — 5min cache) ──
   const { data: tusdSupply } = useReadContract({
-    address: TUSD,
-    abi: erc20Abi,
-    functionName: "totalSupply",
-    chainId: base.id,
+    address: TUSD, abi: erc20Abi, functionName: "totalSupply", chainId: base.id,
+    query: { staleTime: STALE_SLOW },
   });
   const { data: tusdBurned } = useReadContract({
-    address: TUSD,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [DEAD],
-    chainId: base.id,
+    address: TUSD, abi: erc20Abi, functionName: "balanceOf", args: [DEAD], chainId: base.id,
+    query: { staleTime: STALE_SLOW },
   });
 
-  // ── Burn engine status ──
+  // ── Burn engine status (slow — 5min cache) ──
   const { data: burnStatus } = useReadContract({
-    address: BURN_ENGINE,
-    abi: burnEngineAbi,
-    functionName: "getStatus",
-    chainId: base.id,
+    address: BURN_ENGINE, abi: burnEngineAbi, functionName: "getStatus", chainId: base.id,
+    query: { staleTime: STALE_SLOW },
   });
 
-  // ── Strategic token balances (7 fixed reads) ──
+  // ── Strategic token balances (medium — 1min cache) ──
   const { data: bnkrBal } = useReadContract({
-    address: "0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3b",
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
+    address: "0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3b", abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    query: { staleTime: STALE_MED },
   });
   const { data: drbBal } = useReadContract({
-    address: "0x3ec2156D4c0A9CBdAB4a016633b7BcF6a8d68Ea2",
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
+    address: "0x3ec2156D4c0A9CBdAB4a016633b7BcF6a8d68Ea2", abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    query: { staleTime: STALE_MED },
   });
   const { data: clankerBal } = useReadContract({
-    address: "0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb",
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
+    address: "0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb", abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    query: { staleTime: STALE_MED },
   });
   const { data: kellyBal } = useReadContract({
-    address: "0x50D2280441372486BeecdD328c1854743EBaCb07",
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
+    address: "0x50D2280441372486BeecdD328c1854743EBaCb07", abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    query: { staleTime: STALE_MED },
   });
   const { data: clawdBal } = useReadContract({
-    address: "0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07",
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
+    address: "0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07", abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    query: { staleTime: STALE_MED },
   });
   const { data: junoBal } = useReadContract({
-    address: "0x4E6c9f48f73E54EE5F3AB7e2992B2d733D0d0b07",
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
+    address: "0x4E6c9f48f73E54EE5F3AB7e2992B2d733D0d0b07", abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    query: { staleTime: STALE_MED },
   });
   const { data: felixBal } = useReadContract({
-    address: "0xf30Bf00edd0C22db54C9274B90D2A4C21FC09b07",
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
+    address: "0xf30Bf00edd0C22db54C9274B90D2A4C21FC09b07", abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    query: { staleTime: STALE_MED },
   });
 
-  // ── Pending fees: ₸USD from legacy + ₸USD & WETH from LP source ──
+  // ── Pending fees (slow — 5min cache) ──
   const { data: legacyTusdPending } = useReadContract({
-    address: TUSD,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [LEGACY_FEE_SOURCE],
-    chainId: base.id,
+    address: TUSD, abi: erc20Abi, functionName: "balanceOf", args: [LEGACY_FEE_SOURCE], chainId: base.id,
+    query: { staleTime: STALE_SLOW },
   });
   const { data: lpTusdPending } = useReadContract({
-    address: TUSD,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [LP_FEE_SOURCE],
-    chainId: base.id,
+    address: TUSD, abi: erc20Abi, functionName: "balanceOf", args: [LP_FEE_SOURCE], chainId: base.id,
+    query: { staleTime: STALE_SLOW },
   });
   const { data: lpWethPending } = useReadContract({
-    address: WETH_ADDR,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [LP_FEE_SOURCE],
-    chainId: base.id,
+    address: WETH_ADDR, abi: erc20Abi, functionName: "balanceOf", args: [LP_FEE_SOURCE], chainId: base.id,
+    query: { staleTime: STALE_SLOW },
   });
 
   // ── V3 strategic token pool prices (3 fixed reads) ──
@@ -1472,18 +1426,21 @@ const Home: NextPage = () => {
     abi: poolAbi,
     functionName: "slot0",
     chainId: base.id,
+    query: { staleTime: STALE_SLOW },
   });
   const { data: drbSlot0 } = useReadContract({
     address: "0x5116773e18A9C7bB03EBB961b38678E45E238923",
     abi: poolAbi,
     functionName: "slot0",
     chainId: base.id,
+    query: { staleTime: STALE_SLOW },
   });
   const { data: clankerSlot0 } = useReadContract({
     address: "0xC1a6FBeDAe68E1472DbB91FE29B51F7a0Bd44F97",
     abi: poolAbi,
     functionName: "slot0",
     chainId: base.id,
+    query: { staleTime: STALE_SLOW },
   });
 
   // ── V4 strategic token pool prices via StateView.getSlot0(poolId) ──
@@ -1493,6 +1450,7 @@ const Home: NextPage = () => {
     functionName: "getSlot0",
     args: ["0x7EAC33D5641697366EAEC3234147FD98BA25F01ACCA66A51A48BD129FC532145"],
     chainId: base.id,
+    query: { staleTime: STALE_SLOW },
   });
   const { data: clawdSlot0 } = useReadContract({
     address: STATE_VIEW,
@@ -1500,6 +1458,7 @@ const Home: NextPage = () => {
     functionName: "getSlot0",
     args: ["0x9FD58E73D8047CB14AC540ACD141D3FC1A41FB6252D674B730FAF62FE24AA8CE"],
     chainId: base.id,
+    query: { staleTime: STALE_SLOW },
   });
   const { data: junoSlot0 } = useReadContract({
     address: STATE_VIEW,
@@ -1507,6 +1466,7 @@ const Home: NextPage = () => {
     functionName: "getSlot0",
     args: ["0x1635213E2B19E459A4132DF40011638B65AE7510A35D6A88C47EBF94912C7F2E"],
     chainId: base.id,
+    query: { staleTime: STALE_SLOW },
   });
   const { data: felixSlot0 } = useReadContract({
     address: STATE_VIEW,
@@ -1514,6 +1474,7 @@ const Home: NextPage = () => {
     functionName: "getSlot0",
     args: ["0x6E19027912DB90892200A2B08C514921917BC55D7291EC878AA382C193B50084"],
     chainId: base.id,
+    query: { staleTime: STALE_SLOW },
   });
 
   const publicClient = usePublicClient({ chainId: base.id });
@@ -2599,16 +2560,31 @@ const Home: NextPage = () => {
               ["Owner", ownerAddr || "0x0000000000000000000000000000000000000000"],
               ["Operator", operatorAddr || "0x0000000000000000000000000000000000000000"],
             ] as [string, `0x${string}`][]
-          ).map(([label, addr]) => (
-            <div key={`${label}-${addr}`} className="flex justify-between items-center">
-              <span className="text-sm" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
-                {label}
-              </span>
-              <span className="hide-address-avatar">
-                <Address address={addr} />
-              </span>
-            </div>
-          ))}
+          ).map(([label, addr]) => {
+            const baseName = addr.toLowerCase() === "0x29c3246636977351b7f7238f77a873e62320799d" ? "turbousd.base.eth" : null;
+            return (
+              <div key={`${label}-${addr}`} className="flex justify-between items-center">
+                <span className="text-sm" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                  {label}
+                </span>
+                {baseName ? (
+                  <a
+                    href={`https://basescan.org/address/${addr}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm hover:underline"
+                    style={{ color: "#fff" }}
+                  >
+                    {baseName}
+                  </a>
+                ) : (
+                  <span className="hide-address-avatar">
+                    <Address address={addr} />
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
