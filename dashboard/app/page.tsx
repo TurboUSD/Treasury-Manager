@@ -1310,6 +1310,7 @@ const Home: NextPage = () => {
   const [opsFilter, setOpsFilter] = useState<string>("all");
   const [opsShowUsd, setOpsShowUsd] = useState<Set<number>>(new Set());
   const [stratShowUsd, setStratShowUsd] = useState<Set<number>>(new Set());
+  const [stratShowBuyPrice, setStratShowBuyPrice] = useState<Set<number>>(new Set());
   // Sort state: column + direction. null = default (date desc = newest first)
   const [opsSort, setOpsSort] = useState<{ col: "date" | "amount" | "usd"; dir: "asc" | "desc" } | null>(null);
   // Strategic table sort state
@@ -2200,7 +2201,27 @@ const Home: NextPage = () => {
                         <td className="hidden sm:table-cell font-mono" style={{ color: TEXT_DIM }}>
                           {buyPriceFmt}
                         </td>
-                        <td style={{ color: TEXT_DIM }}>{row.lastOpDate || "—"}</td>
+                        <td style={{ color: TEXT_DIM }}>
+                          {/* Desktop: show date */}
+                          <span className="hidden sm:inline">{row.lastOpDate || "—"}</span>
+                          {/* Mobile: tap to toggle buy price */}
+                          <span
+                            className="sm:hidden cursor-pointer"
+                            onClick={() =>
+                              setStratShowBuyPrice(prev => {
+                                const next = new Set(prev);
+                                if (next.has(i)) next.delete(i); else next.add(i);
+                                return next;
+                              })
+                            }
+                          >
+                            {stratShowBuyPrice.has(i) ? (
+                              <span style={{ color: TEXT_MUTED, fontWeight: 600 }}>{buyPriceFmt}</span>
+                            ) : (
+                              row.lastOpDate || "—"
+                            )}
+                          </span>
+                        </td>
                         <td>
                           <span style={{ color: roiColor, fontWeight: 600 }}>{roiLabel}</span>
                         </td>
