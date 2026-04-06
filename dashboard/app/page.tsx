@@ -1595,24 +1595,31 @@ const Home: NextPage = () => {
     computedBuyPrice: number;
     /** Date of most recent StrategicBuy/StrategicSell operation for this token */
     lastOpDate: string;
+    /** Index in HISTORICAL_OPS_RAW of the most recent op (for tie-breaking same-date sort) */
+    lastOpIdx: number;
     /** Tx hash of the first buy (for the Tx link) */
     firstBuyTxHash: string;
   };
 
   // Build a map of buy-price data from HISTORICAL_OPS_RAW StrategicBuy entries
+  // lastOpIdx tracks position in the array so we can sort correctly when dates are identical
   const buyDataByToken = useMemo(() => {
-    const m: Record<string, { totalWeth: number; totalTokens: number; firstTx: string; firstDate: string; lastDate: string }> = {};
-    for (const op of HISTORICAL_OPS_RAW) {
+    const m: Record<string, { totalWeth: number; totalTokens: number; firstTx: string; firstDate: string; lastDate: string; lastOpIdx: number }> = {};
+    for (let i = 0; i < HISTORICAL_OPS_RAW.length; i++) {
+      const op = HISTORICAL_OPS_RAW[i];
       if (op.type !== "StrategicBuy" || !("strategicToken" in op)) continue;
       const key = (op as { strategicToken: string }).strategicToken.toLowerCase();
       const weth = (op as { wethSpent: number }).wethSpent || 0;
       const tokens = (op as { tokenReceived: number }).tokenReceived || 0;
       if (!m[key]) {
-        m[key] = { totalWeth: 0, totalTokens: 0, firstTx: op.txHash, firstDate: op.date, lastDate: op.date };
+        m[key] = { totalWeth: 0, totalTokens: 0, firstTx: op.txHash, firstDate: op.date, lastDate: op.date, lastOpIdx: i };
       }
       m[key].totalWeth += weth;
       m[key].totalTokens += tokens;
-      if (op.date > m[key].lastDate) m[key].lastDate = op.date;
+      if (op.date >= m[key].lastDate) {
+        m[key].lastDate = op.date;
+        m[key].lastOpIdx = i;
+      }
       if (op.date < m[key].firstDate) {
         m[key].firstDate = op.date;
         m[key].firstTx = op.txHash;
@@ -1630,6 +1637,7 @@ const Home: NextPage = () => {
       roi: null,
       computedBuyPrice: 0,
       lastOpDate: "",
+      lastOpIdx: -1,
       firstBuyTxHash: "",
     },
     {
@@ -1640,6 +1648,7 @@ const Home: NextPage = () => {
       roi: null,
       computedBuyPrice: 0,
       lastOpDate: "",
+      lastOpIdx: -1,
       firstBuyTxHash: "",
     },
     {
@@ -1650,6 +1659,7 @@ const Home: NextPage = () => {
       roi: null,
       computedBuyPrice: 0,
       lastOpDate: "",
+      lastOpIdx: -1,
       firstBuyTxHash: "",
     },
     {
@@ -1660,6 +1670,7 @@ const Home: NextPage = () => {
       roi: null,
       computedBuyPrice: 0,
       lastOpDate: "",
+      lastOpIdx: -1,
       firstBuyTxHash: "",
     },
     {
@@ -1670,6 +1681,7 @@ const Home: NextPage = () => {
       roi: null,
       computedBuyPrice: 0,
       lastOpDate: "",
+      lastOpIdx: -1,
       firstBuyTxHash: "",
     },
     {
@@ -1680,6 +1692,7 @@ const Home: NextPage = () => {
       roi: null,
       computedBuyPrice: 0,
       lastOpDate: "",
+      lastOpIdx: -1,
       firstBuyTxHash: "",
     },
     {
@@ -1690,6 +1703,7 @@ const Home: NextPage = () => {
       roi: null,
       computedBuyPrice: 0,
       lastOpDate: "",
+      lastOpIdx: -1,
       firstBuyTxHash: "",
     },
   ]
@@ -1699,24 +1713,31 @@ const Home: NextPage = () => {
       const bd = buyDataByToken[row.preset.token.toLowerCase()];
       let buyPrice: number;
       let lastOpDate: string;
+      let lastOpIdx: number;
       let firstBuyTxHash: string;
       if (bd && bd.totalTokens > 0) {
         // Price per token in WETH, then convert to USD with current WETH price
         buyPrice = (bd.totalWeth / bd.totalTokens) * wethPriceUsd;
         lastOpDate = bd.lastDate;
+        lastOpIdx = bd.lastOpIdx;
         firstBuyTxHash = bd.firstTx;
       } else {
         // Fallback to preset if no operations exist yet
         buyPrice = Number(row.preset.buyPriceUsd);
         lastOpDate = row.preset.entryDate;
+        lastOpIdx = -1;
         firstBuyTxHash = row.preset.entryTxHash;
       }
       const roi = row.currentPrice > 0 && buyPrice > 0 ? ((row.currentPrice - buyPrice) / buyPrice) * 100 : null;
-      return { ...row, valueUsd, roi, computedBuyPrice: buyPrice, lastOpDate, firstBuyTxHash };
+      return { ...row, valueUsd, roi, computedBuyPrice: buyPrice, lastOpDate, lastOpIdx, firstBuyTxHash };
     })
     .filter(row => row.balance > 0)
-    // Sort by most recent operation first (newest → oldest)
-    .sort((a, b) => b.lastOpDate.localeCompare(a.lastOpDate));
+    // Sort by most recent operation first (newest → oldest); use array index as tiebreaker
+    .sort((a, b) => {
+      const dateCmp = b.lastOpDate.localeCompare(a.lastOpDate);
+      if (dateCmp !== 0) return dateCmp;
+      return b.lastOpIdx - a.lastOpIdx;
+    });
 
   const hasStrategicTokens = strategicRows.length > 0;
 
@@ -1962,8 +1983,10 @@ const Home: NextPage = () => {
       if (col === "amount") cmp = a.balance - b.balance;
       else if (col === "usd") cmp = a.valueUsd - b.valueUsd;
       else if (col === "buyprice") cmp = a.computedBuyPrice - b.computedBuyPrice;
-      else if (col === "entry") cmp = a.lastOpDate.localeCompare(b.lastOpDate);
-      else if (col === "roi") cmp = (a.roi ?? -Infinity) - (b.roi ?? -Infinity);
+      else if (col === "entry") {
+        cmp = a.lastOpDate.localeCompare(b.lastOpDate);
+        if (cmp === 0) cmp = a.lastOpIdx - b.lastOpIdx;
+      } else if (col === "roi") cmp = (a.roi ?? -Infinity) - (b.roi ?? -Infinity);
       return dir === "asc" ? cmp : -cmp;
     });
     return rows;
@@ -2055,36 +2078,6 @@ const Home: NextPage = () => {
             className="rounded-xl overflow-hidden text-xs sm:text-sm"
             style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
           >
-            {/* Sort bar — horizontal scroll on mobile, matching operations table style */}
-            <div
-              className="flex gap-2 p-3 sm:p-4 overflow-x-auto flex-nowrap"
-              style={{ borderBottom: `1px solid ${CARD_BORDER}`, WebkitOverflowScrolling: "touch" }}
-            >
-              {(
-                [
-                  { col: "amount" as const, label: "Amount" },
-                  { col: "usd" as const, label: "USD Value" },
-                  { col: "buyprice" as const, label: "Buy Price" },
-                  { col: "entry" as const, label: "Date" },
-                  { col: "roi" as const, label: "ROI" },
-                ] as const
-              ).map(({ col, label }) => (
-                <button
-                  key={col}
-                  onClick={() => toggleStratSort(col)}
-                  className="btn btn-xs sm:btn-sm shrink-0"
-                  style={{
-                    background: stratSort?.col === col ? GOLD : "transparent",
-                    border: `1px solid ${stratSort?.col === col ? GOLD : "#4f4f4f"}`,
-                    color: stratSort?.col === col ? "#000" : "#888",
-                    fontSize: "12px",
-                  }}
-                >
-                  {label} <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{stratSortIcon(col)}</span>
-                </button>
-              ))}
-            </div>
-
             <div className="overflow-x-auto">
               <table className="table table-xs sm:table-sm w-full" style={{ color: "#e8e8e8" }}>
                 <thead>
