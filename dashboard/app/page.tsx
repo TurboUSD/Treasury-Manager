@@ -1,0 +1,2391 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
+import { Address } from "@scaffold-ui/components";
+import type { NextPage } from "next";
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { formatEther, formatUnits, parseEther, parseUnits } from "viem";
+import { base } from "viem/chains";
+import { useAccount, usePublicClient, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+
+// ── Contract Addresses ─────────────────────────────────────────────────────
+const TREASURY_V1 = "0x3dbF93D110C677A1c063A600cb42940262f3BBd6" as const;
+const TREASURY_V2 = "0xAF8b3FEBA3411430FAc757968Ac1c9FB25b84107" as const;
+const TREASURY_V2_OLD = "0x65D240dD9Aa9280DcFb4a5648de8C0668a854E1b" as const;
+const TREASURY_V2_OLDEST = "0xefd86aAd40Cb4340d4ace8B5d8bf7692ADdc02f8" as const;
+const BURN_ENGINE = "0x022688aDcDc24c648F4efBa76e42CD16BD0863AB" as const;
+const LEGACY_FEE_CLAIMER = "0x2c857A891338fe17D86651B7B78C59c96e274246" as const;
+// Owner is read dynamically from the contract (see ownerAddr below)
+
+const TUSD = "0x3d5e487B21E0569048c4D1A60E98C36e1B09DB07" as const;
+const WETH_ADDR = "0x4200000000000000000000000000000000000006" as const;
+const USDC_ADDR = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
+const DEAD = "0x000000000000000000000000000000000000dEaD" as const;
+
+const TUSD_POOL = "0xd013725b904e76394A3aB0334Da306C505D778F8" as const;
+const USDC_WETH_POOL = "0xd0b53D9277642d899DF5C87A3966A349A798F224" as const;
+const STATE_VIEW = "0xA3c0c9b65baD0b08107Aa264b0f3dB444b867A71" as const;
+
+// Fee source addresses for BurnEngine pending fees
+const LEGACY_FEE_SOURCE = "0x1eaf444ebDf6495C57aD52A04C61521bBf564ace" as const;
+const LP_FEE_SOURCE = "0x33e2Eda238edcF470309b8c6D228986A1204c8f9" as const;
+
+// The active treasury address — change when v2 is deployed
+const ACTIVE_TREASURY =
+  (TREASURY_V2 as string) !== "0x0000000000000000000000000000000000000000" ? TREASURY_V2 : TREASURY_V1;
+
+// ── ABIs ──────────────────────────────────────────────────────────────────
+const erc20Abi = [
+  {
+    name: "balanceOf",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "totalSupply",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  { name: "decimals", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint8" }] },
+] as const;
+
+const poolAbi = [
+  {
+    name: "slot0",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      { name: "sqrtPriceX96", type: "uint160" },
+      { name: "tick", type: "int24" },
+      { name: "observationIndex", type: "uint16" },
+      { name: "observationCardinality", type: "uint16" },
+      { name: "observationCardinalityNext", type: "uint16" },
+      { name: "feeProtocol", type: "uint8" },
+      { name: "unlocked", type: "bool" },
+    ],
+  },
+] as const;
+
+const stateViewAbi = [
+  {
+    name: "getSlot0",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "poolId", type: "bytes32" }],
+    outputs: [
+      { name: "sqrtPriceX96", type: "uint160" },
+      { name: "tick", type: "int24" },
+      { name: "protocolFee", type: "uint24" },
+      { name: "lpFee", type: "uint24" },
+    ],
+  },
+] as const;
+
+const transferEventAbi = {
+  type: "event",
+  name: "Transfer",
+  inputs: [
+    { type: "address", name: "from", indexed: true },
+    { type: "address", name: "to", indexed: true },
+    { type: "uint256", name: "value", indexed: false },
+  ],
+} as const;
+
+const burnEngineAbi = [
+  {
+    name: "getStatus",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      { name: "_totalBurnedAllTime", type: "uint256" },
+      { name: "_lastCycleTimestamp", type: "uint256" },
+      { name: "_cycleCount", type: "uint256" },
+      { name: "_wethBalance", type: "uint256" },
+      { name: "_tusdBalance", type: "uint256" },
+    ],
+  },
+] as const;
+
+const legacyFeeClaimerAbi = [
+  {
+    name: "claimAndBurn",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+] as const;
+
+const treasuryV2Abi = [
+  {
+    name: "owner", type: "function", stateMutability: "view",
+    inputs: [], outputs: [{ name: "", type: "address" }],
+  },
+  {
+    name: "authorizedOperator", type: "function", stateMutability: "view",
+    inputs: [], outputs: [{ name: "", type: "address" }],
+  },
+  {
+    name: "addStrategicToken",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "isV4", type: "bool" },
+      { name: "v3Pool", type: "address" },
+      { name: "v3Fee", type: "uint24" },
+      { name: "v4PoolId", type: "bytes32" },
+      { name: "v4Currency0", type: "address" },
+      { name: "v4Currency1", type: "address" },
+      { name: "v4Fee", type: "uint24" },
+      { name: "v4TickSpacing", type: "int24" },
+      { name: "v4Hooks", type: "address" },
+      { name: "buyPriceUsd", type: "uint256" },
+      { name: "buyMarketCapUsd", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "strategicTokens",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [
+      { name: "enabled", type: "bool" },
+      { name: "isV4", type: "bool" },
+      { name: "fallbackActivatedOnce", type: "bool" },
+      { name: "v3Fee", type: "uint24" },
+      { name: "v4Fee", type: "uint24" },
+      { name: "v4TickSpacing", type: "int24" },
+      { name: "v3Pool", type: "address" },
+      { name: "v4Hooks", type: "address" },
+      { name: "v4Currency0", type: "address" },
+      { name: "v4Currency1", type: "address" },
+      { name: "v4PoolId", type: "bytes32" },
+      { name: "buyPriceUsd", type: "uint256" },
+      { name: "buyMarketCapUsd", type: "uint256" },
+      { name: "trackedDeposits", type: "uint256" },
+      { name: "totalSold", type: "uint256" },
+      { name: "fallbackSold", type: "uint256" },
+    ],
+  },
+  // Owner operations
+  {
+    name: "buybackWETH",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "wethAmount", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    name: "buybackUSDC",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "usdcAmount", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    name: "stakeTUSD",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "amount", type: "uint256" },
+      { name: "poolId", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "unstakeTUSD",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "amount", type: "uint256" },
+      { name: "poolId", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "rebalanceStrategicToken",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "amountIn", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "buyStrategicToken",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "wethAmount", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "setBuyStrategicLimits",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "_perAction", type: "uint256" },
+      { name: "_perDay", type: "uint256" },
+    ],
+    outputs: [],
+  },
+] as const;
+
+// ── Strategic Token Presets ──────────────────────────────────────────────
+type StrategicPreset = {
+  ticker: string;
+  token: string;
+  isV4: boolean;
+  v3Pool: string;
+  v3Fee: number;
+  v4PoolId: string;
+  v4Currency0: string;
+  v4Currency1: string;
+  v4Fee: number;
+  v4TickSpacing: number;
+  v4Hooks: string;
+  buyPriceUsd: string;
+  buyMarketCapUsd: string;
+  entryDate: string;
+  entryTxHash: string;
+};
+
+const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
+const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
+const V4_HOOKS = "0xb429d62f8f3bFFb98CdB9569533eA23bF0Ba28CC";
+
+const STRATEGIC_PRESETS: StrategicPreset[] = [
+  // V3 Tokens
+  {
+    ticker: "BNKR",
+    token: "0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3b",
+    isV4: false,
+    v3Pool: "0xAEC085E5A5CE8d96A7bDd3eB3A62445d4f6CE703",
+    v3Fee: 10000,
+    v4PoolId: ZERO_BYTES32,
+    v4Currency0: ZERO_ADDR,
+    v4Currency1: ZERO_ADDR,
+    v4Fee: 0,
+    v4TickSpacing: 0,
+    v4Hooks: ZERO_ADDR,
+    buyPriceUsd: "0.0003497",
+    buyMarketCapUsd: "35000000",
+    entryDate: "2026-03-18",
+    entryTxHash: "",
+  },
+  {
+    ticker: "DRB",
+    token: "0x3ec2156D4c0A9CBdAB4a016633b7BcF6a8d68Ea2",
+    isV4: false,
+    v3Pool: "0x5116773e18A9C7bB03EBB961b38678E45E238923",
+    v3Fee: 10000,
+    v4PoolId: ZERO_BYTES32,
+    v4Currency0: ZERO_ADDR,
+    v4Currency1: ZERO_ADDR,
+    v4Fee: 0,
+    v4TickSpacing: 0,
+    v4Hooks: ZERO_ADDR,
+    buyPriceUsd: "0.00008909",
+    buyMarketCapUsd: "9000000",
+    entryDate: "2026-03-18",
+    entryTxHash: "",
+  },
+  {
+    ticker: "Clanker",
+    token: "0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb",
+    isV4: false,
+    v3Pool: "0xC1a6FBeDAe68E1472DbB91FE29B51F7a0Bd44F97",
+    v3Fee: 10000,
+    v4PoolId: ZERO_BYTES32,
+    v4Currency0: ZERO_ADDR,
+    v4Currency1: ZERO_ADDR,
+    v4Fee: 0,
+    v4TickSpacing: 0,
+    v4Hooks: ZERO_ADDR,
+    buyPriceUsd: "25",
+    buyMarketCapUsd: "25000000",
+    entryDate: "2026-03-18",
+    entryTxHash: "",
+  },
+  // V4 Tokens
+  {
+    ticker: "KELLY",
+    token: "0x50D2280441372486BeecdD328c1854743EBaCb07",
+    isV4: true,
+    v3Pool: ZERO_ADDR,
+    v3Fee: 0,
+    v4PoolId: "0x7EAC33D5641697366EAEC3234147FD98BA25F01ACCA66A51A48BD129FC532145",
+    v4Currency0: WETH_ADDR,
+    v4Currency1: "0x50D2280441372486BeecdD328c1854743EBaCb07",
+    v4Fee: 8388608,
+    v4TickSpacing: 200,
+    v4Hooks: V4_HOOKS,
+    buyPriceUsd: "0.00001",
+    buyMarketCapUsd: "1000000",
+    entryDate: "2026-03-18",
+    entryTxHash: "",
+  },
+  {
+    ticker: "CLAWD",
+    token: "0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07",
+    isV4: true,
+    v3Pool: ZERO_ADDR,
+    v3Fee: 0,
+    v4PoolId: "0x9FD58E73D8047CB14AC540ACD141D3FC1A41FB6252D674B730FAF62FE24AA8CE",
+    v4Currency0: WETH_ADDR,
+    v4Currency1: "0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07",
+    v4Fee: 8388608,
+    v4TickSpacing: 200,
+    v4Hooks: V4_HOOKS,
+    buyPriceUsd: "0.000028",
+    buyMarketCapUsd: "2800000",
+    entryDate: "2026-03-18",
+    entryTxHash: "",
+  },
+  {
+    ticker: "JUNO",
+    token: "0x4E6c9f48f73E54EE5F3AB7e2992B2d733D0d0b07",
+    isV4: true,
+    v3Pool: ZERO_ADDR,
+    v3Fee: 0,
+    v4PoolId: "0x1635213E2B19E459A4132DF40011638B65AE7510A35D6A88C47EBF94912C7F2E",
+    v4Currency0: WETH_ADDR,
+    v4Currency1: "0x4E6c9f48f73E54EE5F3AB7e2992B2d733D0d0b07",
+    v4Fee: 8388608,
+    v4TickSpacing: 200,
+    v4Hooks: V4_HOOKS,
+    buyPriceUsd: "0.000008",
+    buyMarketCapUsd: "800000",
+    entryDate: "2026-03-18",
+    entryTxHash: "",
+  },
+  {
+    ticker: "FELIX",
+    token: "0xf30Bf00edd0C22db54C9274B90D2A4C21FC09b07",
+    isV4: true,
+    v3Pool: ZERO_ADDR,
+    v3Fee: 0,
+    v4PoolId: "0x6E19027912DB90892200A2B08C514921917BC55D7291EC878AA382C193B50084",
+    v4Currency0: WETH_ADDR,
+    v4Currency1: "0xf30Bf00edd0C22db54C9274B90D2A4C21FC09b07",
+    v4Fee: 8388608,
+    v4TickSpacing: 200,
+    v4Hooks: V4_HOOKS,
+    buyPriceUsd: "0.00001",
+    buyMarketCapUsd: "1000000",
+    entryDate: "2026-03-18",
+    entryTxHash: "",
+  },
+];
+
+const EMPTY_PRESET: StrategicPreset = {
+  ticker: "CUSTOM",
+  token: "",
+  isV4: false,
+  v3Pool: "",
+  v3Fee: 10000,
+  v4PoolId: ZERO_BYTES32,
+  v4Currency0: WETH_ADDR,
+  v4Currency1: "",
+  v4Fee: 8388608,
+  v4TickSpacing: 200,
+  v4Hooks: V4_HOOKS,
+  buyPriceUsd: "",
+  buyMarketCapUsd: "",
+  entryDate: "",
+  entryTxHash: "",
+};
+
+// ── Known historical operations (TreasuryManager v1 + BurnEngine) ────────
+type Operation = {
+  type: "Buyback" | "Burn" | "Rebalance" | "Stake" | "BurnEngine" | "StrategicBuy" | "StrategicSell";
+  amount: string;
+  token: string;
+  usdValue: string;
+  date: string;
+  txHash: string;
+  // StrategicSell: ROI vs buy price (shown as sub-line under amount)
+  roiPct?: number; // e.g. 250 (green) or -30 (red)
+};
+
+// Historical ops — USD values for burns are computed dynamically from live price
+const HISTORICAL_OPS_RAW = [
+  {
+    type: "Buyback" as const,
+    amount: "22,024,060 \u20B8USD",
+    token: "WETH",
+    usdValue: "$100",
+    date: "2026-03-18",
+    txHash: "0x5c3aac4e5ff14e22313f485d01b19432fd1294acf1740055f3e77f0ce7c5362b",
+    tusdAmount: 0,
+  },
+  {
+    type: "Burn" as const,
+    amount: "43,147,461 \u20B8USD",
+    token: "\u20B8USD",
+    usdValue: "",
+    date: "2026-03-18",
+    txHash: "0xa590b565b381eea85b144cd39821d301fb7d23d4c13e4a147033d87491db161c",
+    tusdAmount: 43_147_461,
+  },
+  {
+    type: "BurnEngine" as const,
+    amount: "1,000 \u20B8USD",
+    token: "\u20B8USD",
+    usdValue: "",
+    date: "2026-03-18",
+    txHash: "0xe39ab49ffd9894e21ecfd8f7eec071ffef09587b19e57503680f1a51fc297c0b",
+    tusdAmount: 1_000,
+  },
+  {
+    type: "BurnEngine" as const,
+    amount: "1,000 \u20B8USD",
+    token: "\u20B8USD",
+    usdValue: "",
+    date: "2026-03-18",
+    txHash: "0xb8df47dcd3ff0e07efa98007360dba7d0ab74058bd283163c9db397d34913f96",
+    tusdAmount: 1_000,
+  },
+];
+
+// Total ₸USD already accounted for in HISTORICAL_OPS_RAW for BurnEngine
+const KNOWN_ENGINE_BURNED = 2_000;
+
+// ── Price Helpers ──────────────────────────────────────────────────────────
+
+const Q192 = 2n ** 192n;
+
+function calcWethPriceUsd(sqrtPriceX96: bigint): number {
+  if (!sqrtPriceX96 || sqrtPriceX96 === 0n) return 0;
+  const scale = 10n ** 18n;
+  const priceScaled = (sqrtPriceX96 * sqrtPriceX96 * scale) / Q192;
+  return (Number(priceScaled) / 1e18) * 1e12;
+}
+
+function calcTusdPerWeth(sqrtPriceX96: bigint): number {
+  if (!sqrtPriceX96 || sqrtPriceX96 === 0n) return 0;
+  const scale = 10n ** 18n;
+  const priceScaled = (Q192 * scale) / (sqrtPriceX96 * sqrtPriceX96);
+  return Number(priceScaled) / 1e18;
+}
+
+function calcTusdPriceUsd(tusdPoolSqrt: bigint, wethPriceUsd: number): number {
+  if (!tusdPoolSqrt || tusdPoolSqrt === 0n || wethPriceUsd === 0) return 0;
+  const tusdPerWeth = calcTusdPerWeth(tusdPoolSqrt);
+  if (tusdPerWeth === 0) return 0;
+  return wethPriceUsd / tusdPerWeth;
+}
+
+// V4: currency0=WETH, currency1=TOKEN (both 18 dec)
+// sqrtPriceX96² / Q192 = TOKEN per WETH → token price in WETH = 1 / that ratio
+function calcV4TokenPriceUsd(sqrtPriceX96: bigint, wethPriceUsd: number): number {
+  if (!sqrtPriceX96 || sqrtPriceX96 === 0n || wethPriceUsd === 0) return 0;
+  const scale = 10n ** 18n;
+  // price = token/weth = sqrtPriceX96² * scale / Q192
+  const tokenPerWeth = (sqrtPriceX96 * sqrtPriceX96 * scale) / Q192;
+  const tokenPerWethNum = Number(tokenPerWeth) / 1e18;
+  if (tokenPerWethNum === 0) return 0;
+  return wethPriceUsd / tokenPerWethNum;
+}
+
+// V3: token is token0 (18 dec), WETH is token1 (18 dec) — true for BNKR, DRB, Clanker
+function calcV3TokenPriceUsd(sqrtPriceX96: bigint, wethPriceUsd: number): number {
+  if (!sqrtPriceX96 || sqrtPriceX96 === 0n || wethPriceUsd === 0) return 0;
+  const scale = 10n ** 18n;
+  const priceScaled = (sqrtPriceX96 * sqrtPriceX96 * scale) / Q192;
+  return (Number(priceScaled) / 1e18) * wethPriceUsd;
+}
+
+// ── Format Helpers ────────────────────────────────────────────────────────
+
+function fmtUsd(n: number): string {
+  if (n >= 1_000_000) return `$${Math.round(n).toLocaleString("en-US")}`;
+  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function fmtBig(n: number): string {
+  if (n >= 1_000_000_000) return `${Math.round(n / 1_000_000_000)}B`;
+  if (n >= 1_000_000) return `${Math.round(n / 1_000_000)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+  return Math.round(n).toString();
+}
+
+/** Compact an amount string like "22,024,060 ₸USD" → "22M ₸USD" for mobile */
+function compactAmount(s: string): string {
+  const m = s.match(/^([\d,]+)\s*(.*)$/);
+  if (!m) return s;
+  const num = Number(m[1].replace(/,/g, ""));
+  const suffix = m[2];
+  if (num >= 1_000_000_000) return `${Math.round(num / 1_000_000_000)}B ${suffix}`.trim();
+  if (num >= 1_000_000) return `${Math.round(num / 1_000_000)}M ${suffix}`.trim();
+  if (num >= 1_000) return `${Math.round(num / 1_000)}K ${suffix}`.trim();
+  return s;
+}
+
+function fmtPct(n: number): string {
+  return `${n.toFixed(4)}%`;
+}
+
+// ── Design tokens ─────────────────────────────────────────────────────────
+const GOLD = "#43e397";
+const CARD_BG = "#0c0c0c";
+const CARD_BORDER = "#1c1c1c";
+const TEXT_MUTED = "#a8a8a8";
+const TEXT_DIM = "#888888";
+
+// ── Components ────────────────────────────────────────────────────────────
+
+function StatCard({ title, value, subtitle }: { title: React.ReactNode; value: string; subtitle?: string }) {
+  return (
+    <div className="rounded-xl p-3 sm:p-5" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
+      <h3
+        className="text-[10px] sm:text-xs font-medium uppercase tracking-wider"
+        style={{ color: TEXT_MUTED, fontWeight: 600 }}
+      >
+        {title}
+      </h3>
+      <p className="text-base sm:text-xl font-bold mt-1 text-white">{value}</p>
+      {subtitle && (
+        <p className="text-[10px] sm:text-xs mt-1" style={{ color: TEXT_DIM }}>
+          {subtitle}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="text-sm font-semibold mb-4 uppercase tracking-widest" style={{ color: GOLD }}>
+      {children}
+    </h2>
+  );
+}
+
+// ── Permissionless Fee Burner Panel ───────────────────────────────────────
+function LegacyFeeBurnerPanel() {
+  const { address: connectedAddress } = useAccount();
+  const { openConnectModal } = useConnectModal();
+
+  const {
+    writeContract: writeClaimBurn,
+    data: cbHash,
+    isPending: cbPending,
+    error: cbError,
+    isSuccess: cbSuccess,
+  } = useWriteContract();
+
+  const { isLoading: cbConfirming } = useWaitForTransactionReceipt({ hash: cbHash });
+
+  const handleClaimBurn = () => {
+    writeClaimBurn({
+      address: LEGACY_FEE_CLAIMER,
+      abi: legacyFeeClaimerAbi,
+      functionName: "claimAndBurn",
+      chainId: base.id,
+    });
+  };
+
+  return (
+    <div className="max-w-4xl w-full px-4 mb-8">
+      <SectionTitle>Permissionless Fee Burner</SectionTitle>
+      <div
+        className="rounded-xl p-6 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 sm:gap-6 items-center"
+        style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
+      >
+        {/* Left: How it works */}
+        <div className="text-sm space-y-1">
+          <p
+            className="font-semibold text-xs uppercase tracking-widest mb-2"
+            style={{ color: TEXT_MUTED, fontWeight: 600 }}
+          >
+            How it works
+          </p>
+          <p className="text-white/80" style={{ paddingLeft: "1.2em", textIndent: "-1.2em" }}>
+            ↳ Claims Clanker LP fees <span style={{ color: TEXT_MUTED, fontWeight: 600 }}>(WETH + ₸USD)</span> and
+            Legacy fees <span style={{ color: TEXT_MUTED, fontWeight: 600 }}>(₸USD)</span>
+          </p>
+          <p className="text-white/80" style={{ paddingLeft: "1.2em", textIndent: "-1.2em" }}>
+            ↳ Swaps WETH → ₸USD
+          </p>
+          <p className="text-white/80" style={{ paddingLeft: "1.2em", textIndent: "-1.2em" }}>
+            ↳ Burns ALL ₸USD to{" "}
+            <span className="font-mono text-xs" style={{ color: GOLD }}>
+              0xdead
+            </span>
+          </p>
+        </div>
+
+        {/* Right: Claim & Burn card */}
+        <div
+          className="rounded-lg px-5 py-3 sm:py-5 space-y-3 min-w-[220px] mt-0"
+          style={{ background: "#080808", border: `1px solid #1a1a1a` }}
+        >
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-white/60 mb-1">Claim & Burn</p>
+            <p className="text-xs" style={{ color: TEXT_DIM }}>
+              No owner, no admin, no pause — permissionless hyperstructure
+            </p>
+          </div>
+          <button
+            onClick={connectedAddress ? handleClaimBurn : openConnectModal}
+            disabled={connectedAddress ? cbPending || cbConfirming : false}
+            className="btn btn-sm w-full"
+            style={{
+              background: !connectedAddress ? "transparent" : cbPending || cbConfirming ? "#1a1a1a" : GOLD,
+              border: `1px solid ${GOLD}`,
+              color: !connectedAddress ? GOLD : "#000",
+            }}
+          >
+            {!connectedAddress ? "Connect Wallet" : cbPending || cbConfirming ? "Confirming…" : "Claim & Burn"}
+          </button>
+          {cbSuccess && cbHash && (
+            <a
+              href={`https://basescan.org/tx/${cbHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs hover:underline block text-center"
+              style={{ color: GOLD }}
+            >
+              View tx ↗
+            </a>
+          )}
+          {cbError && <p className="text-xs text-red-400">{cbError.message?.slice(0, 100)}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Owner Operations Panel ────────────────────────────────────────────────
+type OpType = "buyback-weth" | "buyback-usdc" | "stake" | "unstake" | "rebalance" | "buy-strategic";
+
+function OwnerOperationsPanel() {
+  const [activeOp, setActiveOp] = useState<OpType>("buyback-weth");
+  const [amount, setAmount] = useState("");
+  const [rebalanceToken, setRebalanceToken] = useState(STRATEGIC_PRESETS[0].token);
+  const [buyStrategicToken, setBuyStrategicToken] = useState(STRATEGIC_PRESETS[0].token);
+  const [poolId, setPoolId] = useState("5");
+
+  const { writeContract, data: txHash, isPending, error: writeError, isSuccess, reset } = useWriteContract();
+  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash: txHash });
+
+  const opFilters: { id: OpType; label: string }[] = [
+    { id: "buyback-weth", label: "Buyback (WETH)" },
+    { id: "buyback-usdc", label: "Buyback (USDC)" },
+    { id: "stake", label: "Stake" },
+    { id: "unstake", label: "Unstake" },
+    { id: "rebalance", label: "Rebalance" },
+    { id: "buy-strategic", label: "Buy Strategic" },
+  ];
+
+  const handleSubmit = () => {
+    if (!amount && activeOp !== "rebalance") return;
+    reset();
+
+    try {
+      if (activeOp === "buyback-weth") {
+        writeContract({
+          address: ACTIVE_TREASURY as `0x${string}`,
+          abi: treasuryV2Abi,
+          functionName: "buybackWETH",
+          args: [parseEther(amount)],
+          chainId: base.id,
+        });
+      } else if (activeOp === "buyback-usdc") {
+        writeContract({
+          address: ACTIVE_TREASURY as `0x${string}`,
+          abi: treasuryV2Abi,
+          functionName: "buybackUSDC",
+          args: [parseUnits(amount, 6)],
+          chainId: base.id,
+        });
+      } else if (activeOp === "stake") {
+        writeContract({
+          address: ACTIVE_TREASURY as `0x${string}`,
+          abi: treasuryV2Abi,
+          functionName: "stakeTUSD",
+          args: [parseEther(amount), BigInt(poolId || "5")],
+          chainId: base.id,
+        });
+      } else if (activeOp === "unstake") {
+        writeContract({
+          address: ACTIVE_TREASURY as `0x${string}`,
+          abi: treasuryV2Abi,
+          functionName: "unstakeTUSD",
+          args: [parseEther(amount), BigInt(poolId || "5")],
+          chainId: base.id,
+        });
+      } else if (activeOp === "rebalance") {
+        writeContract({
+          address: ACTIVE_TREASURY as `0x${string}`,
+          abi: treasuryV2Abi,
+          functionName: "rebalanceStrategicToken",
+          args: [rebalanceToken as `0x${string}`, parseEther(amount || "0")],
+          chainId: base.id,
+        });
+      } else if (activeOp === "buy-strategic") {
+        writeContract({
+          address: ACTIVE_TREASURY as `0x${string}`,
+          abi: treasuryV2Abi,
+          functionName: "buyStrategicToken",
+          args: [buyStrategicToken as `0x${string}`, parseEther(amount)],
+          chainId: base.id,
+        });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const amountLabel: Record<OpType, string> = {
+    "buyback-weth": "WETH amount",
+    "buyback-usdc": "USDC amount",
+    stake: "₸USD amount",
+    unstake: "₸USD amount",
+    rebalance: "Token amount (standard units)",
+    "buy-strategic": "WETH amount to spend",
+  };
+
+  const amountPlaceholder: Record<OpType, string> = {
+    "buyback-weth": "e.g. 0.05",
+    "buyback-usdc": "e.g. 100",
+    stake: "e.g. 1000000",
+    unstake: "e.g. 1000000",
+    rebalance: "e.g. 1",
+    "buy-strategic": "e.g. 0.5",
+  };
+
+  const btnLabel: Record<OpType, string> = {
+    "buyback-weth": "Buyback ₸USD with WETH",
+    "buyback-usdc": "Buyback ₸USD with USDC",
+    stake: "Stake ₸USD",
+    unstake: "Unstake ₸USD",
+    rebalance: "Rebalance Token",
+    "buy-strategic": "Buy Token with WETH",
+  };
+
+  return (
+    <div className="max-w-4xl w-full px-4 mb-8">
+      <SectionTitle>Quick Operations (Owner Only)</SectionTitle>
+      <div className="rounded-xl p-6" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
+        {/* Op type filter */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          {opFilters.map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => {
+                setActiveOp(id);
+                setAmount("");
+                reset();
+              }}
+              className="btn btn-sm"
+              style={{
+                background: activeOp === id ? GOLD : "transparent",
+                border: `1px solid ${activeOp === id ? GOLD : "#2a2a2a"}`,
+                color: activeOp === id ? "#000" : "#888",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Token picker for rebalance / buy-strategic */}
+        {(activeOp === "rebalance" || activeOp === "buy-strategic") && (
+          <div className="mb-4">
+            <label
+              className="text-xs uppercase tracking-wider block mb-2"
+              style={{ color: TEXT_MUTED, fontWeight: 600 }}
+            >
+              Token
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {STRATEGIC_PRESETS.map(p => {
+                const currentToken = activeOp === "rebalance" ? rebalanceToken : buyStrategicToken;
+                const isSelected = currentToken === p.token;
+                return (
+                  <button
+                    key={p.token}
+                    onClick={() =>
+                      activeOp === "rebalance" ? setRebalanceToken(p.token) : setBuyStrategicToken(p.token)
+                    }
+                    className="btn btn-sm"
+                    style={{
+                      background: isSelected ? GOLD : "transparent",
+                      border: `1px solid ${isSelected ? GOLD : "#2a2a2a"}`,
+                      color: isSelected ? "#000" : "#888",
+                    }}
+                  >
+                    {p.ticker}
+                    <span className="ml-1 text-xs" style={{ opacity: 0.6 }}>
+                      {p.isV4 ? "V4" : "V3"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {activeOp === "rebalance" && rebalanceToken && (
+              <p className="text-xs mt-2 font-mono" style={{ color: TEXT_DIM }}>
+                {rebalanceToken}
+              </p>
+            )}
+            {activeOp === "buy-strategic" && buyStrategicToken && (
+              <p className="text-xs mt-2 font-mono" style={{ color: TEXT_DIM }}>
+                {buyStrategicToken}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Fields */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          {/* Pool ID — only for stake/unstake */}
+          {(activeOp === "stake" || activeOp === "unstake") && (
+            <div className="md:col-span-2">
+              <label
+                className="text-xs uppercase tracking-wider block mb-1"
+                style={{ color: TEXT_MUTED, fontWeight: 600 }}
+              >
+                Pool ID
+              </label>
+              <input
+                type="number"
+                step="1"
+                className="input input-bordered w-full font-mono"
+                style={{ background: "#0a0a0a", color: "#e8e8e8", border: `1px solid #2a2a2a` }}
+                placeholder="e.g. 5"
+                value={poolId}
+                onChange={e => setPoolId(e.target.value)}
+              />
+              <p className="text-xs mt-1" style={{ color: TEXT_DIM }}>
+                Aerodrome pool ID (default: 5)
+              </p>
+            </div>
+          )}
+
+          {/* Amount */}
+          <div className="md:col-span-2">
+            <label
+              className="text-xs uppercase tracking-wider block mb-1"
+              style={{ color: TEXT_MUTED, fontWeight: 600 }}
+            >
+              {amountLabel[activeOp]}
+            </label>
+            <input
+              type="number"
+              step="any"
+              className="input input-bordered w-full font-mono"
+              style={{ background: "#0a0a0a", color: "#e8e8e8", border: `1px solid #2a2a2a` }}
+              placeholder={amountPlaceholder[activeOp]}
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+            />
+            <p className="text-xs mt-1" style={{ color: TEXT_DIM }}>
+              Enter in standard units (e.g. 1.5 WETH, not wei) — conversion is automatic
+            </p>
+          </div>
+        </div>
+
+        {/* Status */}
+        {writeError && (
+          <div
+            className="rounded-lg p-3 mb-4 text-sm"
+            style={{ background: "#1a0000", border: "1px solid #ff6b6b33", color: "#ff6b6b" }}
+          >
+            {writeError.message?.slice(0, 200)}
+          </div>
+        )}
+        {isSuccess && txHash && (
+          <div
+            className="rounded-lg p-3 mb-4 text-sm"
+            style={{ background: "#001a0a", border: "1px solid #34eeb633", color: "#34eeb6" }}
+          >
+            Transaction confirmed!{" "}
+            <a
+              href={`https://basescan.org/tx/${txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline"
+            >
+              View on Basescan ↗
+            </a>
+          </div>
+        )}
+
+        <button
+          onClick={handleSubmit}
+          disabled={isPending || isConfirming || !amount}
+          className="btn w-full"
+          style={{
+            background: isPending || isConfirming ? "#1a1a1a" : GOLD,
+            border: `1px solid ${GOLD}`,
+            color: "#000",
+            fontWeight: 700,
+          }}
+        >
+          {isPending ? "Confirm in wallet…" : isConfirming ? "Confirming…" : btnLabel[activeOp]}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── AddStrategicToken Panel ──────────────────────────────────────────────
+function AddStrategicTokenPanel() {
+  const [selected, setSelected] = useState<string>("BNKR");
+  const [form, setForm] = useState<StrategicPreset>(STRATEGIC_PRESETS[0]);
+
+  const { writeContract, data: txHash, isPending, error: writeError, reset } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+
+  const { data: tokenConfig } = useReadContract({
+    address: ACTIVE_TREASURY as `0x${string}`,
+    abi: treasuryV2Abi,
+    functionName: "strategicTokens",
+    args: [form.token as `0x${string}`],
+    chainId: base.id,
+    query: { enabled: !!form.token && form.token.length === 42 },
+  });
+  const isAlreadyAdded = tokenConfig ? tokenConfig[0] === true : false;
+
+  const handleSelect = (ticker: string) => {
+    setSelected(ticker);
+    reset();
+    if (ticker === "CUSTOM") {
+      setForm({ ...EMPTY_PRESET });
+    } else {
+      const preset = STRATEGIC_PRESETS.find(p => p.ticker === ticker);
+      if (preset) setForm({ ...preset });
+    }
+  };
+
+  const handleSubmit = () => {
+    if (!form.token || !form.buyPriceUsd || !form.buyMarketCapUsd) return;
+    writeContract({
+      address: ACTIVE_TREASURY as `0x${string}`,
+      abi: treasuryV2Abi,
+      functionName: "addStrategicToken",
+      args: [
+        form.token as `0x${string}`,
+        form.isV4,
+        (form.isV4 ? ZERO_ADDR : form.v3Pool) as `0x${string}`,
+        form.isV4 ? 0 : form.v3Fee,
+        (form.isV4 ? form.v4PoolId : ZERO_BYTES32) as `0x${string}`,
+        (form.isV4 ? form.v4Currency0 : ZERO_ADDR) as `0x${string}`,
+        (form.isV4 ? form.v4Currency1 : ZERO_ADDR) as `0x${string}`,
+        form.isV4 ? form.v4Fee : 0,
+        form.isV4 ? form.v4TickSpacing : 0,
+        (form.isV4 ? form.v4Hooks : ZERO_ADDR) as `0x${string}`,
+        parseUnits(form.buyPriceUsd, 18),
+        parseUnits(form.buyMarketCapUsd, 18),
+      ],
+      chainId: base.id,
+    });
+  };
+
+  const updateField = (key: keyof StrategicPreset, value: string | number | boolean) => {
+    setForm(prev => ({ ...prev, [key]: value }));
+  };
+
+  return (
+    <div className="max-w-4xl w-full px-4 mb-8">
+      <SectionTitle>Add Strategic Token (Owner Only)</SectionTitle>
+      <div className="rounded-xl p-6" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
+        {/* Token selector */}
+        <div className="mb-6">
+          <label
+            className="text-xs font-medium uppercase tracking-wider mb-2 block"
+            style={{ color: TEXT_MUTED, fontWeight: 600 }}
+          >
+            Select Token
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {STRATEGIC_PRESETS.map(p => (
+              <button
+                key={p.ticker}
+                onClick={() => handleSelect(p.ticker)}
+                className="btn btn-sm"
+                style={{
+                  background: selected === p.ticker ? GOLD : "transparent",
+                  border: `1px solid ${selected === p.ticker ? GOLD : "#2a2a2a"}`,
+                  color: selected === p.ticker ? "#000" : "#888",
+                }}
+              >
+                {p.ticker}
+                <span className="text-xs opacity-60 ml-1">{p.isV4 ? "V4" : "V3"}</span>
+              </button>
+            ))}
+            <button
+              onClick={() => handleSelect("CUSTOM")}
+              className="btn btn-sm"
+              style={{
+                background: selected === "CUSTOM" ? "#555" : "transparent",
+                border: "1px solid #2a2a2a",
+                color: selected === "CUSTOM" ? "#fff" : "#888",
+              }}
+            >
+              CUSTOM
+            </button>
+          </div>
+        </div>
+
+        {/* Form fields */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+              Token Address
+            </label>
+            <input
+              className="input input-bordered w-full font-mono text-sm"
+              style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+              value={form.token}
+              onChange={e => updateField("token", e.target.value)}
+              disabled={selected !== "CUSTOM"}
+              placeholder="0x..."
+            />
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+              Pool Version
+            </label>
+            <div className="flex gap-2 mt-1">
+              <button
+                className="btn btn-sm flex-1"
+                style={{
+                  background: !form.isV4 ? GOLD : "transparent",
+                  border: `1px solid ${!form.isV4 ? GOLD : "#2a2a2a"}`,
+                  color: !form.isV4 ? "#000" : "#888",
+                }}
+                onClick={() => updateField("isV4", false)}
+                disabled={selected !== "CUSTOM"}
+              >
+                V3
+              </button>
+              <button
+                className="btn btn-sm flex-1"
+                style={{
+                  background: form.isV4 ? GOLD : "transparent",
+                  border: `1px solid ${form.isV4 ? GOLD : "#2a2a2a"}`,
+                  color: form.isV4 ? "#000" : "#888",
+                }}
+                onClick={() => updateField("isV4", true)}
+                disabled={selected !== "CUSTOM"}
+              >
+                V4
+              </button>
+            </div>
+          </div>
+
+          {/* V3 fields */}
+          {!form.isV4 && (
+            <>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                  V3 Pool Address
+                </label>
+                <input
+                  className="input input-bordered w-full font-mono text-sm"
+                  style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+                  value={form.v3Pool}
+                  onChange={e => updateField("v3Pool", e.target.value)}
+                  disabled={selected !== "CUSTOM"}
+                  placeholder="0x..."
+                />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                  V3 Fee
+                </label>
+                <input
+                  className="input input-bordered w-full font-mono text-sm"
+                  style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+                  type="number"
+                  value={form.v3Fee}
+                  onChange={e => updateField("v3Fee", Number(e.target.value))}
+                  disabled={selected !== "CUSTOM"}
+                />
+              </div>
+            </>
+          )}
+
+          {/* V4 fields */}
+          {form.isV4 && (
+            <>
+              <div className="md:col-span-2">
+                <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                  V4 Pool ID
+                </label>
+                <input
+                  className="input input-bordered w-full font-mono text-xs"
+                  style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+                  value={form.v4PoolId}
+                  onChange={e => updateField("v4PoolId", e.target.value)}
+                  disabled={selected !== "CUSTOM"}
+                  placeholder="0x..."
+                />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                  V4 Currency0
+                </label>
+                <input
+                  className="input input-bordered w-full font-mono text-sm"
+                  style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+                  value={form.v4Currency0}
+                  onChange={e => updateField("v4Currency0", e.target.value)}
+                  disabled={selected !== "CUSTOM"}
+                />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                  V4 Currency1
+                </label>
+                <input
+                  className="input input-bordered w-full font-mono text-sm"
+                  style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+                  value={form.v4Currency1}
+                  onChange={e => updateField("v4Currency1", e.target.value)}
+                  disabled={selected !== "CUSTOM"}
+                />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                  V4 Fee
+                </label>
+                <input
+                  className="input input-bordered w-full font-mono text-sm"
+                  style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+                  type="number"
+                  value={form.v4Fee}
+                  onChange={e => updateField("v4Fee", Number(e.target.value))}
+                  disabled={selected !== "CUSTOM"}
+                />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                  V4 Tick Spacing
+                </label>
+                <input
+                  className="input input-bordered w-full font-mono text-sm"
+                  style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+                  type="number"
+                  value={form.v4TickSpacing}
+                  onChange={e => updateField("v4TickSpacing", Number(e.target.value))}
+                  disabled={selected !== "CUSTOM"}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                  V4 Hooks
+                </label>
+                <input
+                  className="input input-bordered w-full font-mono text-sm"
+                  style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+                  value={form.v4Hooks}
+                  onChange={e => updateField("v4Hooks", e.target.value)}
+                  disabled={selected !== "CUSTOM"}
+                />
+              </div>
+            </>
+          )}
+
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+              Buy Price (USD)
+            </label>
+            <input
+              className="input input-bordered w-full font-mono text-sm"
+              style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+              value={form.buyPriceUsd}
+              onChange={e => updateField("buyPriceUsd", e.target.value)}
+              placeholder="0.001"
+            />
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+              Buy Market Cap (USD)
+            </label>
+            <input
+              className="input input-bordered w-full font-mono text-sm"
+              style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+              value={form.buyMarketCapUsd}
+              onChange={e => updateField("buyMarketCapUsd", e.target.value)}
+              placeholder="1000000"
+            />
+          </div>
+        </div>
+
+        {isAlreadyAdded && (
+          <div
+            className="rounded-lg p-3 mb-4 text-sm"
+            style={{ background: "#1a1500", border: "1px solid #ffcf7233", color: "#ffcf72" }}
+          >
+            This token is already added to the contract.
+          </div>
+        )}
+        {writeError && (
+          <div
+            className="rounded-lg p-3 mb-4 text-sm"
+            style={{ background: "#1a0000", border: "1px solid #ff6b6b33", color: "#ff6b6b" }}
+          >
+            {writeError.message?.slice(0, 200)}
+          </div>
+        )}
+        {isSuccess && (
+          <div
+            className="rounded-lg p-3 mb-4 text-sm"
+            style={{ background: "#001a0a", border: "1px solid #34eeb633", color: "#34eeb6" }}
+          >
+            Token added successfully!{" "}
+            {txHash && (
+              <a
+                href={`https://basescan.org/tx/${txHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                View tx ↗
+              </a>
+            )}
+          </div>
+        )}
+
+        <button
+          className="btn w-full"
+          onClick={handleSubmit}
+          style={{ background: GOLD, border: `1px solid ${GOLD}`, color: "#000", fontWeight: 700 }}
+          disabled={
+            isPending || isConfirming || isAlreadyAdded || !form.token || !form.buyPriceUsd || !form.buyMarketCapUsd
+          }
+        >
+          {isPending
+            ? "Confirm in wallet…"
+            : isConfirming
+              ? "Confirming…"
+              : isAlreadyAdded
+                ? "Already Added"
+                : `Add ${selected !== "CUSTOM" ? selected : "Token"}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────
+const Home: NextPage = () => {
+  const [opsVisible, setOpsVisible] = useState(10);
+  const [opsFilter, setOpsFilter] = useState<string>("all");
+  const [opsShowUsd, setOpsShowUsd] = useState<Set<number>>(new Set());
+  const [stratShowUsd, setStratShowUsd] = useState<Set<number>>(new Set());
+  // Sort state: column + direction. null = default (date desc = newest first)
+  const [opsSort, setOpsSort] = useState<{ col: "date" | "amount" | "usd"; dir: "asc" | "desc" } | null>(null);
+  const { address: connectedAddress } = useAccount();
+
+  // ── Dynamic owner & operator reads ──
+  const { data: ownerAddr } = useReadContract({
+    address: ACTIVE_TREASURY as `0x${string}`, abi: treasuryV2Abi, functionName: "owner", chainId: base.id,
+  });
+  const { data: operatorAddr } = useReadContract({
+    address: ACTIVE_TREASURY as `0x${string}`, abi: treasuryV2Abi, functionName: "authorizedOperator", chainId: base.id,
+  });
+  const isOwner = !!(connectedAddress && ownerAddr && connectedAddress.toLowerCase() === (ownerAddr as string).toLowerCase());
+
+  // ── Pool prices ──
+  const { data: usdcWethSlot0 } = useReadContract({
+    address: USDC_WETH_POOL,
+    abi: poolAbi,
+    functionName: "slot0",
+    chainId: base.id,
+  });
+  const { data: tusdPoolSlot0 } = useReadContract({
+    address: TUSD_POOL,
+    abi: poolAbi,
+    functionName: "slot0",
+    chainId: base.id,
+  });
+
+  const wethPriceUsd = usdcWethSlot0 ? calcWethPriceUsd(usdcWethSlot0[0]) : 0;
+  const tusdPriceUsd = tusdPoolSlot0 ? calcTusdPriceUsd(tusdPoolSlot0[0], wethPriceUsd) : 0;
+
+  // ── Treasury balances ──
+  const { data: tusdBal } = useReadContract({
+    address: TUSD,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
+  });
+  const { data: wethBal } = useReadContract({
+    address: WETH_ADDR,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
+  });
+  const { data: usdcBal } = useReadContract({
+    address: USDC_ADDR,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
+  });
+
+  // ── Supply & burns ──
+  const { data: tusdSupply } = useReadContract({
+    address: TUSD,
+    abi: erc20Abi,
+    functionName: "totalSupply",
+    chainId: base.id,
+  });
+  const { data: tusdBurned } = useReadContract({
+    address: TUSD,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [DEAD],
+    chainId: base.id,
+  });
+
+  // ── Burn engine status ──
+  const { data: burnStatus } = useReadContract({
+    address: BURN_ENGINE,
+    abi: burnEngineAbi,
+    functionName: "getStatus",
+    chainId: base.id,
+  });
+
+  // ── Strategic token balances (7 fixed reads) ──
+  const { data: bnkrBal } = useReadContract({
+    address: "0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3b",
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
+  });
+  const { data: drbBal } = useReadContract({
+    address: "0x3ec2156D4c0A9CBdAB4a016633b7BcF6a8d68Ea2",
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
+  });
+  const { data: clankerBal } = useReadContract({
+    address: "0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb",
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
+  });
+  const { data: kellyBal } = useReadContract({
+    address: "0x50D2280441372486BeecdD328c1854743EBaCb07",
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
+  });
+  const { data: clawdBal } = useReadContract({
+    address: "0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07",
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
+  });
+  const { data: junoBal } = useReadContract({
+    address: "0x4E6c9f48f73E54EE5F3AB7e2992B2d733D0d0b07",
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
+  });
+  const { data: felixBal } = useReadContract({
+    address: "0xf30Bf00edd0C22db54C9274B90D2A4C21FC09b07",
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
+  });
+
+  // ── Pending fees: ₸USD from legacy + ₸USD & WETH from LP source ──
+  const { data: legacyTusdPending } = useReadContract({
+    address: TUSD,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [LEGACY_FEE_SOURCE],
+    chainId: base.id,
+  });
+  const { data: lpTusdPending } = useReadContract({
+    address: TUSD,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [LP_FEE_SOURCE],
+    chainId: base.id,
+  });
+  const { data: lpWethPending } = useReadContract({
+    address: WETH_ADDR,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [LP_FEE_SOURCE],
+    chainId: base.id,
+  });
+
+  // ── V3 strategic token pool prices (3 fixed reads) ──
+  const { data: bnkrSlot0 } = useReadContract({
+    address: "0xAEC085E5A5CE8d96A7bDd3eB3A62445d4f6CE703",
+    abi: poolAbi,
+    functionName: "slot0",
+    chainId: base.id,
+  });
+  const { data: drbSlot0 } = useReadContract({
+    address: "0x5116773e18A9C7bB03EBB961b38678E45E238923",
+    abi: poolAbi,
+    functionName: "slot0",
+    chainId: base.id,
+  });
+  const { data: clankerSlot0 } = useReadContract({
+    address: "0xC1a6FBeDAe68E1472DbB91FE29B51F7a0Bd44F97",
+    abi: poolAbi,
+    functionName: "slot0",
+    chainId: base.id,
+  });
+
+  // ── V4 strategic token pool prices via StateView.getSlot0(poolId) ──
+  const { data: kellySlot0 } = useReadContract({
+    address: STATE_VIEW,
+    abi: stateViewAbi,
+    functionName: "getSlot0",
+    args: ["0x7EAC33D5641697366EAEC3234147FD98BA25F01ACCA66A51A48BD129FC532145"],
+    chainId: base.id,
+  });
+  const { data: clawdSlot0 } = useReadContract({
+    address: STATE_VIEW,
+    abi: stateViewAbi,
+    functionName: "getSlot0",
+    args: ["0x9FD58E73D8047CB14AC540ACD141D3FC1A41FB6252D674B730FAF62FE24AA8CE"],
+    chainId: base.id,
+  });
+  const { data: junoSlot0 } = useReadContract({
+    address: STATE_VIEW,
+    abi: stateViewAbi,
+    functionName: "getSlot0",
+    args: ["0x1635213E2B19E459A4132DF40011638B65AE7510A35D6A88C47EBF94912C7F2E"],
+    chainId: base.id,
+  });
+  const { data: felixSlot0 } = useReadContract({
+    address: STATE_VIEW,
+    abi: stateViewAbi,
+    functionName: "getSlot0",
+    args: ["0x6E19027912DB90892200A2B08C514921917BC55D7291EC878AA382C193B50084"],
+    chainId: base.id,
+  });
+
+  // ── Computed values ──
+  const tusdBalNum = tusdBal ? Number(formatEther(tusdBal)) : 0;
+  const wethBalNum = wethBal ? Number(formatEther(wethBal)) : 0;
+  const usdcBalNum = usdcBal ? Number(formatUnits(usdcBal, 6)) : 0;
+  const tusdSupplyNum = tusdSupply ? Number(formatEther(tusdSupply)) : 0;
+  const tusdBurnedNum = tusdBurned ? Number(formatEther(tusdBurned)) : 0;
+
+  const tusdBalUsd = tusdBalNum * tusdPriceUsd;
+  const wethBalUsd = wethBalNum * wethPriceUsd;
+  const usdcBalUsd = usdcBalNum;
+
+  const totalManagedUsd = tusdBalUsd + wethBalUsd + usdcBalUsd;
+
+  const burnPct = tusdSupplyNum > 0 ? (tusdBurnedNum / tusdSupplyNum) * 100 : 0;
+  const burnUsd = tusdBurnedNum * tusdPriceUsd;
+
+  const totalBuybackTusd = 22_024_060;
+  const buybackPct = tusdSupplyNum > 0 ? (totalBuybackTusd / tusdSupplyNum) * 100 : 0;
+  const buybackUsd = totalBuybackTusd * tusdPriceUsd;
+
+  const totalStakedTusd = 0;
+
+  const engineBurned = burnStatus ? Number(formatEther(burnStatus[0])) : 0;
+  const engineCycles = burnStatus ? Number(burnStatus[2]) : 0;
+  const engineLastCycle = burnStatus && burnStatus[1] > 0n ? new Date(Number(burnStatus[1]) * 1000) : null;
+
+  // Pending fees
+  const pendingTusd =
+    (legacyTusdPending ? Number(formatEther(legacyTusdPending)) : 0) +
+    (lpTusdPending ? Number(formatEther(lpTusdPending)) : 0);
+  const pendingWeth = lpWethPending ? Number(formatEther(lpWethPending)) : 0;
+  const pendingTusdUsd = pendingTusd * tusdPriceUsd;
+  const pendingWethUsd = pendingWeth * wethPriceUsd;
+  const pendingTotalUsd = pendingTusdUsd + pendingWethUsd;
+
+  // Total claimed via BurnEngine (sum of all BurnEngine entries from HISTORICAL_OPS_RAW)
+  const totalClaimedTusd = HISTORICAL_OPS_RAW.filter(op => op.type === "BurnEngine").reduce(
+    (sum, op) => sum + op.tusdAmount,
+    0,
+  );
+  const totalClaimedTusdUsd = totalClaimedTusd * tusdPriceUsd;
+  // WETH claimed historically — update when tracked in HISTORICAL_OPS_RAW
+  const totalClaimedWeth = 0;
+
+  // ── Strategic token computed rows ──
+  const bnkrPrice = bnkrSlot0 ? calcV3TokenPriceUsd(bnkrSlot0[0], wethPriceUsd) : 0;
+  const drbPrice = drbSlot0 ? calcV3TokenPriceUsd(drbSlot0[0], wethPriceUsd) : 0;
+  const clankerPrice = clankerSlot0 ? calcV3TokenPriceUsd(clankerSlot0[0], wethPriceUsd) : 0;
+  const kellyPrice = kellySlot0 ? calcV4TokenPriceUsd(kellySlot0[0], wethPriceUsd) : 0;
+  const clawdPrice = clawdSlot0 ? calcV4TokenPriceUsd(clawdSlot0[0], wethPriceUsd) : 0;
+  const junoPrice = junoSlot0 ? calcV4TokenPriceUsd(junoSlot0[0], wethPriceUsd) : 0;
+  const felixPrice = felixSlot0 ? calcV4TokenPriceUsd(felixSlot0[0], wethPriceUsd) : 0;
+
+  type StrategicRow = {
+    preset: StrategicPreset;
+    balance: number;
+    currentPrice: number;
+    valueUsd: number;
+    roi: number | null;
+  };
+
+  const strategicRows: StrategicRow[] = [
+    {
+      preset: STRATEGIC_PRESETS[0],
+      balance: bnkrBal ? Number(formatEther(bnkrBal)) : 0,
+      currentPrice: bnkrPrice,
+      valueUsd: 0,
+      roi: null,
+    },
+    {
+      preset: STRATEGIC_PRESETS[1],
+      balance: drbBal ? Number(formatEther(drbBal)) : 0,
+      currentPrice: drbPrice,
+      valueUsd: 0,
+      roi: null,
+    },
+    {
+      preset: STRATEGIC_PRESETS[2],
+      balance: clankerBal ? Number(formatEther(clankerBal)) : 0,
+      currentPrice: clankerPrice,
+      valueUsd: 0,
+      roi: null,
+    },
+    {
+      preset: STRATEGIC_PRESETS[3],
+      balance: kellyBal ? Number(formatEther(kellyBal)) : 0,
+      currentPrice: kellyPrice,
+      valueUsd: 0,
+      roi: null,
+    },
+    {
+      preset: STRATEGIC_PRESETS[4],
+      balance: clawdBal ? Number(formatEther(clawdBal)) : 0,
+      currentPrice: clawdPrice,
+      valueUsd: 0,
+      roi: null,
+    },
+    {
+      preset: STRATEGIC_PRESETS[5],
+      balance: junoBal ? Number(formatEther(junoBal)) : 0,
+      currentPrice: junoPrice,
+      valueUsd: 0,
+      roi: null,
+    },
+    {
+      preset: STRATEGIC_PRESETS[6],
+      balance: felixBal ? Number(formatEther(felixBal)) : 0,
+      currentPrice: felixPrice,
+      valueUsd: 0,
+      roi: null,
+    },
+  ]
+    .map(row => {
+      const valueUsd = row.balance * row.currentPrice;
+      const buyPrice = Number(row.preset.buyPriceUsd);
+      const roi = row.currentPrice > 0 && buyPrice > 0 ? ((row.currentPrice - buyPrice) / buyPrice) * 100 : null;
+      return { ...row, valueUsd, roi };
+    })
+    .filter(row => row.balance > 0);
+
+  const hasStrategicTokens = strategicRows.length > 0;
+
+  // ── Strategic token price map (for chart USD conversion) ──
+  const strategicPriceMap = useMemo(() => {
+    const m: Record<string, number> = {};
+    m[STRATEGIC_PRESETS[0].token.toLowerCase()] = bnkrPrice;
+    m[STRATEGIC_PRESETS[1].token.toLowerCase()] = drbPrice;
+    m[STRATEGIC_PRESETS[2].token.toLowerCase()] = clankerPrice;
+    m[STRATEGIC_PRESETS[3].token.toLowerCase()] = kellyPrice;
+    m[STRATEGIC_PRESETS[4].token.toLowerCase()] = clawdPrice;
+    m[STRATEGIC_PRESETS[5].token.toLowerCase()] = junoPrice;
+    m[STRATEGIC_PRESETS[6].token.toLowerCase()] = felixPrice;
+    return m;
+  }, [bnkrPrice, drbPrice, clankerPrice, kellyPrice, clawdPrice, junoPrice, felixPrice]);
+
+  const strategicTotalUsd = strategicRows.reduce((sum, r) => sum + r.valueUsd, 0);
+
+  // ── Chart data: on-chain Transfer events → stacked daily snapshots ──
+  type DailySnapshot = { date: string; tusd: number; weth: number; usdc: number; strategic: number };
+  const publicClient = usePublicClient({ chainId: base.id });
+  const [chartData, setChartData] = useState<DailySnapshot[]>([]);
+
+  useEffect(() => {
+    if (!publicClient || wethPriceUsd === 0) return;
+
+    // Token → category mapping
+    const tokenInfo: Record<string, { cat: "tusd" | "weth" | "usdc" | "strategic"; dec: number }> = {};
+    tokenInfo[TUSD.toLowerCase()] = { cat: "tusd", dec: 18 };
+    tokenInfo[WETH_ADDR.toLowerCase()] = { cat: "weth", dec: 18 };
+    tokenInfo[USDC_ADDR.toLowerCase()] = { cat: "usdc", dec: 6 };
+    for (const p of STRATEGIC_PRESETS) {
+      tokenInfo[p.token.toLowerCase()] = { cat: "strategic", dec: 18 };
+    }
+    const tokenAddrs = Object.keys(tokenInfo) as `0x${string}`[];
+
+    // All treasury addresses (V1, V2-old, V3-current)
+    const treasuries = [TREASURY_V1, TREASURY_V2_OLDEST, TREASURY_V2_OLD, ACTIVE_TREASURY] as const;
+
+    (async () => {
+      try {
+        const currentBlock = await publicClient.getBlockNumber();
+        const now = Math.floor(Date.now() / 1000);
+        // ~30 days back on Base (2s blocks)
+        const startBlock = currentBlock > 1_300_000n ? currentBlock - 1_300_000n : 0n;
+
+        type LogEntry = { block: bigint; token: string; amount: bigint; dir: 1 | -1 };
+        const allLogs: LogEntry[] = [];
+
+        for (const tAddr of treasuries) {
+          try {
+            const [inLogs, outLogs] = await Promise.all([
+              publicClient.getLogs({
+                address: tokenAddrs,
+                event: transferEventAbi,
+                args: { to: tAddr },
+                fromBlock: startBlock,
+              }),
+              publicClient.getLogs({
+                address: tokenAddrs,
+                event: transferEventAbi,
+                args: { from: tAddr },
+                fromBlock: startBlock,
+              }),
+            ]);
+            for (const l of inLogs) {
+              if (l.args.value) allLogs.push({ block: l.blockNumber, token: l.address.toLowerCase(), amount: l.args.value, dir: 1 });
+            }
+            for (const l of outLogs) {
+              if (l.args.value) allLogs.push({ block: l.blockNumber, token: l.address.toLowerCase(), amount: l.args.value, dir: -1 });
+            }
+          } catch {
+            // If one treasury range fails, continue with others
+          }
+        }
+
+        allLogs.sort((a, b) => Number(a.block - b.block));
+
+        // Running per-token balances → daily snapshots
+        const running: Record<string, number> = {};
+        const dailyMap: Record<string, Record<string, number>> = {};
+
+        for (const log of allLogs) {
+          const info = tokenInfo[log.token];
+          if (!info) continue;
+          const val = Number(log.amount) / 10 ** info.dec;
+          running[log.token] = (running[log.token] || 0) + val * log.dir;
+
+          const blockDiff = Number(currentBlock - log.block);
+          const ts = now - blockDiff * 2;
+          const date = new Date(ts * 1000).toISOString().slice(0, 10);
+          dailyMap[date] = { ...running };
+        }
+
+        // Convert to chart format
+        const dates = Object.keys(dailyMap).sort();
+        const snapshots: DailySnapshot[] = dates.map(d => {
+          const bals = dailyMap[d];
+          let tusd = 0, weth = 0, usdc = 0, strategic = 0;
+          for (const [addr, bal] of Object.entries(bals)) {
+            const info = tokenInfo[addr];
+            if (!info) continue;
+            const b = Math.max(0, bal);
+            if (info.cat === "tusd") tusd += b * tusdPriceUsd;
+            else if (info.cat === "weth") weth += b * wethPriceUsd;
+            else if (info.cat === "usdc") usdc += b;
+            else if (info.cat === "strategic") strategic += b * (strategicPriceMap[addr] || 0);
+          }
+          return { date: d.slice(5), tusd, weth, usdc, strategic };
+        });
+
+        // Always append today's live data as final point
+        snapshots.push({
+          date: "Today",
+          tusd: tusdBalUsd,
+          weth: wethBalUsd,
+          usdc: usdcBalUsd,
+          strategic: strategicTotalUsd,
+        });
+
+        setChartData(snapshots);
+      } catch (e) {
+        console.error("Chart event fetch failed:", e);
+        // Fallback: show only today's live data
+        setChartData([
+          { date: "Today", tusd: tusdBalUsd, weth: wethBalUsd, usdc: usdcBalUsd, strategic: strategicTotalUsd },
+        ]);
+      }
+    })();
+  }, [publicClient, wethPriceUsd, tusdPriceUsd, tusdBalUsd, wethBalUsd, usdcBalUsd, strategicTotalUsd, strategicPriceMap]);
+
+  const filteredOps = useMemo(() => {
+    const allOps: Operation[] = HISTORICAL_OPS_RAW.map(op => ({
+      type: op.type,
+      amount: op.amount,
+      token: op.token,
+      usdValue: op.tusdAmount > 0 && tusdPriceUsd > 0 ? fmtUsd(op.tusdAmount * tusdPriceUsd) : op.usdValue || "\u2014",
+      date: op.date,
+      txHash: op.txHash,
+      roiPct: (op as Record<string, unknown>).roiPct as number | undefined,
+    }));
+
+    // Only add a dynamic entry for NEW BurnEngine burns beyond the known historical ones
+    const newEngineBurned = engineBurned - KNOWN_ENGINE_BURNED;
+    if (newEngineBurned > 0) {
+      allOps.push({
+        type: "BurnEngine",
+        amount: `${fmtBig(newEngineBurned)} \u20B8USD`,
+        token: "\u20B8USD",
+        usdValue: fmtUsd(newEngineBurned * tusdPriceUsd),
+        date: engineLastCycle ? engineLastCycle.toISOString().slice(0, 10) : "\u2014",
+        txHash: "",
+      });
+    }
+
+    // Default: newest first (reverse chronological)
+    allOps.reverse();
+
+    const filtered =
+      opsFilter === "all" ? allOps : allOps.filter(op => op.type.toLowerCase().includes(opsFilter.toLowerCase()));
+
+    // Apply sort if active
+    if (opsSort) {
+      const { col, dir } = opsSort;
+      filtered.sort((a, b) => {
+        let cmp = 0;
+        if (col === "date") {
+          cmp = a.date.localeCompare(b.date);
+        } else if (col === "usd") {
+          const aVal = parseFloat(a.usdValue.replace(/[^0-9.-]/g, "")) || 0;
+          const bVal = parseFloat(b.usdValue.replace(/[^0-9.-]/g, "")) || 0;
+          cmp = aVal - bVal;
+        } else if (col === "amount") {
+          const aVal = parseFloat(a.amount.replace(/[^0-9.-]/g, "")) || 0;
+          const bVal = parseFloat(b.amount.replace(/[^0-9.-]/g, "")) || 0;
+          cmp = aVal - bVal;
+        }
+        return dir === "asc" ? cmp : -cmp;
+      });
+    }
+
+    return filtered;
+  }, [opsFilter, engineCycles, engineBurned, tusdPriceUsd, engineLastCycle, opsSort]);
+
+  // Sort toggle: click once = desc, click again = asc, click again = reset to default (date desc)
+  const toggleSort = (col: "date" | "amount" | "usd") => {
+    setOpsSort(prev => {
+      if (!prev || prev.col !== col) return { col, dir: "desc" };
+      if (prev.dir === "desc") return { col, dir: "asc" };
+      return null; // reset to default
+    });
+  };
+
+  const sortIcon = (col: "date" | "amount" | "usd") => {
+    if (!opsSort || opsSort.col !== col) return "↕";
+    return opsSort.dir === "desc" ? "↓" : "↑";
+  };
+
+  const badgeColor: Record<string, string> = {
+    Buyback: "#34eeb6",
+    Burn: "#ff6b6b",
+    BurnEngine: "#ff6b6b",
+    Rebalance: "#5b8dee",
+    Stake: "#ffcf72",
+    StrategicBuy: "#a78bfa",
+    StrategicSell: "#fb923c",
+  };
+
+  return (
+    <div className="flex flex-col items-center grow pt-6 pb-12" style={{ background: "#000" }}>
+      {/* Header */}
+      <div className="text-center px-4 mb-8">
+        <h1 className="text-4xl font-bold mb-1 text-white tracking-tight">₸USD Treasury</h1>
+        <p className="text-sm" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+          Operated by AMI · Artificial Monetary Intelligence
+        </p>
+      </div>
+
+      {/* Hero: Managed Funds */}
+      <div
+        className="rounded-2xl p-8 mb-8 mx-4 max-w-2xl w-full text-center"
+        style={{ background: CARD_BG, border: `1px solid ${GOLD}22` }}
+      >
+        <p className="text-xs uppercase tracking-widest mb-2" style={{ color: GOLD }}>
+          Managed Funds
+        </p>
+        <p className="text-5xl font-bold text-white mt-2">{fmtUsd(totalManagedUsd)}</p>
+        <p className="text-xs mt-3" style={{ color: TEXT_DIM }}>
+          Total USD value of all tokens held in the Treasury contract
+        </p>
+      </div>
+
+      {/* Main Stats Row */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 max-w-4xl w-full px-4 mb-8">
+        <StatCard
+          title="Total Burned"
+          value={`${fmtBig(tusdBurnedNum)} \u20B8USD`}
+          subtitle={`${fmtPct(burnPct)} of supply · ${fmtUsd(burnUsd)}`}
+        />
+        <StatCard
+          title="Total Bought"
+          value={`${fmtBig(totalBuybackTusd)} \u20B8USD`}
+          subtitle={`${fmtPct(buybackPct)} of supply · ${fmtUsd(buybackUsd)}`}
+        />
+        <StatCard
+          title="Total Staked"
+          value={totalStakedTusd > 0 ? `${fmtBig(totalStakedTusd)} \u20B8USD` : "\u2014"}
+          subtitle={
+            totalStakedTusd > 0 ? `${fmtPct((totalStakedTusd / tusdSupplyNum) * 100)} of supply` : "No staking yet"
+          }
+        />
+      </div>
+
+      {/* Treasury Balances */}
+      <div className="max-w-4xl w-full px-4 mb-8">
+        <SectionTitle>Treasury Balances</SectionTitle>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <StatCard
+            title={`\u20B8USD Balance`}
+            value={tusdBalNum > 0 ? `${fmtBig(tusdBalNum)} \u20B8USD` : `0 \u20B8USD`}
+            subtitle={tusdBalUsd > 0 ? fmtUsd(tusdBalUsd) : "\u2014"}
+          />
+          <StatCard
+            title="WETH Balance"
+            value={wethBalNum > 0 ? `${wethBalNum.toFixed(4)} WETH` : "0 WETH"}
+            subtitle={wethBalUsd > 0 ? fmtUsd(wethBalUsd) : "\u2014"}
+          />
+          <StatCard
+            title="USDC Balance"
+            value={usdcBalNum > 0 ? `${fmtBig(usdcBalNum)} USDC` : "0 USDC"}
+            subtitle={usdcBalUsd > 0 ? fmtUsd(usdcBalUsd) : "\u2014"}
+          />
+          <StatCard title="Strategic Portfolio" value={fmtUsd(totalManagedUsd)} subtitle="(Combined token value)" />
+        </div>
+      </div>
+
+      {/* Strategic Token Balance Table — hidden if no tokens held */}
+      {hasStrategicTokens && (
+        <div className="max-w-4xl w-full px-4 mb-8">
+          <SectionTitle>Strategic Token Balance</SectionTitle>
+          <div
+            className="rounded-xl overflow-hidden text-xs sm:text-sm"
+            style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
+          >
+            <div className="overflow-x-auto">
+              <table className="table table-xs sm:table-sm w-full" style={{ color: "#e8e8e8" }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${CARD_BORDER}` }}>
+                    <th
+                      className="text-[10px] sm:text-xs uppercase tracking-wider"
+                      style={{ color: TEXT_MUTED, background: "transparent" }}
+                    >
+                      Token
+                    </th>
+                    <th
+                      className="text-[10px] sm:text-xs uppercase tracking-wider"
+                      style={{ color: TEXT_MUTED, background: "transparent" }}
+                    >
+                      Amount
+                    </th>
+                    <th
+                      className="text-[10px] sm:text-xs uppercase tracking-wider hidden sm:table-cell"
+                      style={{ color: TEXT_MUTED, background: "transparent" }}
+                    >
+                      USD Value
+                    </th>
+                    <th
+                      className="text-[10px] sm:text-xs uppercase tracking-wider hidden sm:table-cell"
+                      style={{ color: TEXT_MUTED, background: "transparent" }}
+                    >
+                      Buy Price
+                    </th>
+                    <th
+                      className="text-[10px] sm:text-xs uppercase tracking-wider"
+                      style={{ color: TEXT_MUTED, background: "transparent" }}
+                    >
+                      Entry
+                    </th>
+                    <th
+                      className="text-[10px] sm:text-xs uppercase tracking-wider"
+                      style={{ color: TEXT_MUTED, background: "transparent" }}
+                    >
+                      ROI
+                    </th>
+                    <th
+                      className="text-[10px] sm:text-xs uppercase tracking-wider"
+                      style={{ color: TEXT_MUTED, background: "transparent" }}
+                    >
+                      Tx
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {strategicRows.map((row, i) => {
+                    const roiColor = row.roi === null ? TEXT_DIM : row.roi >= 0 ? "#43e397" : "#ff6b6b";
+                    const roiLabel = row.roi === null ? "—" : `${row.roi >= 0 ? "+" : ""}${row.roi.toFixed(0)}%`;
+                    return (
+                      <tr key={row.preset.ticker} style={{ borderBottom: `1px solid #111` }}>
+                        <td>
+                          <span className="font-semibold text-white">{row.preset.ticker}</span>
+                          {/* V3/V4 badge removed — clean token name only */}
+                        </td>
+                        <td className="font-mono text-white">
+                          {/* Desktop: show amount */}
+                          <span className="hidden sm:inline">{fmtBig(row.balance)}</span>
+                          {/* Mobile: tap to toggle USD */}
+                          <span
+                            className="sm:hidden cursor-pointer"
+                            onClick={() =>
+                              setStratShowUsd(prev => {
+                                const next = new Set(prev);
+                                if (next.has(i)) {
+                                  next.delete(i);
+                                } else {
+                                  next.add(i);
+                                }
+                                return next;
+                              })
+                            }
+                          >
+                            {stratShowUsd.has(i) ? (
+                              <span style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                                {row.valueUsd > 0 ? fmtUsd(row.valueUsd) : "—"}
+                              </span>
+                            ) : (
+                              fmtBig(row.balance)
+                            )}
+                          </span>
+                        </td>
+                        <td className="hidden sm:table-cell" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                          {row.valueUsd > 0 ? fmtUsd(row.valueUsd) : "—"}
+                        </td>
+                        <td className="hidden sm:table-cell font-mono" style={{ color: TEXT_DIM }}>
+                          {row.preset.buyPriceUsd
+                            ? `$${Number(row.preset.buyPriceUsd)
+                                .toFixed(Number(row.preset.buyPriceUsd) >= 1 ? 2 : 8)
+                                .replace(/\.?0+$/, "")}`
+                            : "—"}
+                        </td>
+                        <td style={{ color: TEXT_DIM }}>{row.preset.entryDate || "—"}</td>
+                        <td>
+                          <span style={{ color: roiColor, fontWeight: 600 }}>{roiLabel}</span>
+                        </td>
+                        <td>
+                          {row.preset.entryTxHash ? (
+                            <a
+                              href={`https://basescan.org/tx/${row.preset.entryTxHash}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="hover:underline"
+                              style={{ color: GOLD }}
+                            >
+                              View ↗
+                            </a>
+                          ) : (
+                            <span style={{ color: TEXT_DIM }}>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Treasury Composition Chart — stacked area by asset category */}
+      <div className="max-w-4xl w-full px-4 mb-8">
+        <SectionTitle>Treasury Composition Over Time</SectionTitle>
+        <div className="rounded-xl p-6" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
+          {/* Legend */}
+          <div className="flex flex-wrap gap-4 mb-4 text-xs">
+            {[
+              { label: "₸USD", color: "#43e397" },
+              { label: "WETH", color: "#627eea" },
+              { label: "USDC", color: "#2775ca" },
+              { label: "Strategic", color: "#a78bfa" },
+            ].map(({ label, color }) => (
+              <div key={label} className="flex items-center gap-1.5">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
+                <span style={{ color: TEXT_MUTED }}>{label}</span>
+              </div>
+            ))}
+          </div>
+
+          {chartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="gTusd" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#43e397" stopOpacity={0.5} />
+                    <stop offset="95%" stopColor="#43e397" stopOpacity={0.05} />
+                  </linearGradient>
+                  <linearGradient id="gWeth" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#627eea" stopOpacity={0.5} />
+                    <stop offset="95%" stopColor="#627eea" stopOpacity={0.05} />
+                  </linearGradient>
+                  <linearGradient id="gUsdc" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#2775ca" stopOpacity={0.5} />
+                    <stop offset="95%" stopColor="#2775ca" stopOpacity={0.05} />
+                  </linearGradient>
+                  <linearGradient id="gStrat" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#a78bfa" stopOpacity={0.5} />
+                    <stop offset="95%" stopColor="#a78bfa" stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#a6a6a6" }} stroke="#1c1c1c" />
+                <YAxis
+                  tickFormatter={(v: number) => fmtUsd(v)}
+                  tick={{ fontSize: 11, fill: "#a6a6a6" }}
+                  stroke="#1c1c1c"
+                  width={80}
+                />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (!active || !payload || !payload.length) return null;
+                    const d = payload[0]?.payload as DailySnapshot;
+                    const total = (d.tusd || 0) + (d.weth || 0) + (d.usdc || 0) + (d.strategic || 0);
+                    return (
+                      <div style={{ background: "#0c0c0c", border: "1px solid #1c1c1c", borderRadius: 8, padding: "10px 14px", color: "#e8e8e8", fontSize: 12 }}>
+                        <p className="font-semibold mb-2">{d.date}</p>
+                        <p className="font-bold mb-2" style={{ color: GOLD }}>Total: {fmtUsd(total)}</p>
+                        {d.tusd > 0.01 && <p><span style={{ color: "#43e397" }}>₸USD:</span> {fmtUsd(d.tusd)}</p>}
+                        {d.weth > 0.01 && <p><span style={{ color: "#627eea" }}>WETH:</span> {fmtUsd(d.weth)}</p>}
+                        {d.usdc > 0.01 && <p><span style={{ color: "#2775ca" }}>USDC:</span> {fmtUsd(d.usdc)}</p>}
+                        {d.strategic > 0.01 && <p><span style={{ color: "#a78bfa" }}>Strategic:</span> {fmtUsd(d.strategic)}</p>}
+                      </div>
+                    );
+                  }}
+                />
+                <Area type="monotone" dataKey="tusd" stackId="1" stroke="#43e397" fill="url(#gTusd)" strokeWidth={1.5} />
+                <Area type="monotone" dataKey="weth" stackId="1" stroke="#627eea" fill="url(#gWeth)" strokeWidth={1.5} />
+                <Area type="monotone" dataKey="usdc" stackId="1" stroke="#2775ca" fill="url(#gUsdc)" strokeWidth={1.5} />
+                <Area type="monotone" dataKey="strategic" stackId="1" stroke="#a78bfa" fill="url(#gStrat)" strokeWidth={1.5} />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-[280px]" style={{ color: TEXT_DIM }}>
+              <p>Loading on-chain data…</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* BurnEngine */}
+      <div className="max-w-4xl w-full px-4 mb-8">
+        <SectionTitle>BurnEngine</SectionTitle>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {/* Card 1: Total Burned */}
+          <StatCard
+            title="Total Burned"
+            value={`${fmtBig(engineBurned)} \u20B8USD`}
+            subtitle={engineBurned > 0 ? fmtUsd(engineBurned * tusdPriceUsd) : "\u2014"}
+          />
+          {/* Card 2: Pending Fees */}
+          <StatCard
+            title="Pending Fees"
+            value={pendingTotalUsd > 0.01 ? fmtUsd(pendingTotalUsd) : "$0.00"}
+            subtitle={
+              pendingTusd > 0 || pendingWeth > 0
+                ? `${fmtBig(pendingTusd)} \u20B8USD · ${pendingWeth.toFixed(2)} WETH`
+                : "No fees to claim"
+            }
+          />
+          {/* Card 3: Total Claimed */}
+          <StatCard
+            title="Total Claimed"
+            value={totalClaimedTusd > 0 ? fmtUsd(totalClaimedTusdUsd) : "$0.00"}
+            subtitle={`${fmtBig(totalClaimedTusd)} \u20B8USD · ${totalClaimedWeth.toFixed(2)} WETH`}
+          />
+          {/* Card 4: Cycles */}
+          <StatCard
+            title="Cycles"
+            value={`${engineCycles} execution${engineCycles !== 1 ? "s" : ""}`}
+            subtitle={engineLastCycle ? `Last: ${engineLastCycle.toLocaleDateString()}` : "No cycles yet"}
+          />
+        </div>
+      </div>
+
+      {/* Permissionless Fee Burner — below BurnEngine */}
+      <LegacyFeeBurnerPanel />
+
+      {/* Operations Table */}
+      <div className="max-w-4xl w-full px-4 mb-8">
+        <SectionTitle>Operations</SectionTitle>
+        <div
+          className="rounded-xl overflow-hidden text-xs sm:text-sm"
+          style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
+        >
+          {/* Filter bar — horizontal scroll on mobile */}
+          <div
+            className="flex gap-2 p-3 sm:p-4 overflow-x-auto flex-nowrap"
+            style={{ borderBottom: `1px solid ${CARD_BORDER}`, WebkitOverflowScrolling: "touch" }}
+          >
+            {["all", "buyback", "burn", "rebalance", "stake", "burnengine", "strategicbuy", "strategicsell"].map(f => (
+              <button
+                key={f}
+                onClick={() => setOpsFilter(f)}
+                className="btn btn-xs sm:btn-sm shrink-0"
+                style={{
+                  background: opsFilter === f ? GOLD : "transparent",
+                  border: `1px solid ${opsFilter === f ? GOLD : "#4f4f4f"}`,
+                  color: opsFilter === f ? "#000" : "#888",
+                  fontSize: "12px",
+                }}
+              >
+                {f === "all"
+                  ? "All"
+                  : f === "burnengine"
+                    ? "BurnEngine"
+                    : f === "strategicbuy"
+                      ? "Str.Buy"
+                      : f === "strategicsell"
+                        ? "Str.Sell"
+                        : f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="table table-xs sm:table-sm" style={{ color: "#e8e8e8" }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${CARD_BORDER}` }}>
+                  <th
+                    className="text-[10px] sm:text-xs uppercase tracking-wider"
+                    style={{ color: TEXT_MUTED, background: "transparent" }}
+                  >
+                    Type
+                  </th>
+                  <th
+                    className="text-[10px] sm:text-xs uppercase tracking-wider cursor-pointer select-none"
+                    style={{ color: opsSort?.col === "amount" ? "#fff" : TEXT_MUTED, background: "transparent" }}
+                    onClick={() => toggleSort("amount")}
+                  >
+                    Amount <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{sortIcon("amount")}</span>
+                  </th>
+                  <th
+                    className="text-[10px] sm:text-xs uppercase tracking-wider hidden sm:table-cell cursor-pointer select-none"
+                    style={{ color: opsSort?.col === "usd" ? "#fff" : TEXT_MUTED, background: "transparent" }}
+                    onClick={() => toggleSort("usd")}
+                  >
+                    USD Value <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{sortIcon("usd")}</span>
+                  </th>
+                  <th
+                    className="text-[10px] sm:text-xs uppercase tracking-wider cursor-pointer select-none"
+                    style={{ color: opsSort?.col === "date" ? "#fff" : TEXT_MUTED, background: "transparent" }}
+                    onClick={() => toggleSort("date")}
+                  >
+                    Date <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{sortIcon("date")}</span>
+                  </th>
+                  <th
+                    className="text-[10px] sm:text-xs uppercase tracking-wider"
+                    style={{ color: TEXT_MUTED, background: "transparent" }}
+                  >
+                    Tx
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredOps.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-8" style={{ color: TEXT_DIM }}>
+                      No operations found
+                    </td>
+                  </tr>
+                ) : (
+                  filteredOps.slice(0, opsVisible).map((op, i) => (
+                    <tr key={i} style={{ borderBottom: `1px solid #111` }}>
+                      <td>
+                        <span
+                          className="badge badge-xs sm:badge-sm font-mono"
+                          style={{
+                            background: `${badgeColor[op.type] ?? "#888"}40`,
+                            color: badgeColor[op.type] ?? "#888",
+                            border: "none",
+                            fontSize: "inherit",
+                          }}
+                        >
+                          {op.type === "StrategicBuy" ? "Str.Buy" : op.type === "StrategicSell" ? "Str.Sell" : op.type}
+                        </span>
+                      </td>
+                      <td className="font-mono text-white">
+                        {/* Desktop: amount + ROI sub-line for StrategicSell */}
+                        <span className="hidden sm:inline">
+                          <span>{op.amount}</span>
+                          {op.type === "StrategicSell" && op.roiPct !== undefined && (
+                            <span
+                              className="block text-[10px] mt-0.5 font-semibold"
+                              style={{ color: op.roiPct >= 0 ? "#43e397" : "#ff6b6b" }}
+                            >
+                              {op.roiPct >= 0 ? "+" : ""}
+                              {op.roiPct.toFixed(0)}% ROI
+                            </span>
+                          )}
+                        </span>
+                        {/* Mobile: tap to toggle between amount and USD */}
+                        <span
+                          className="sm:hidden cursor-pointer"
+                          onClick={() =>
+                            setOpsShowUsd(prev => {
+                              const next = new Set(prev);
+                              if (next.has(i)) {
+                                next.delete(i);
+                              } else {
+                                next.add(i);
+                              }
+                              return next;
+                            })
+                          }
+                        >
+                          {opsShowUsd.has(i) ? (
+                            <span style={{ color: TEXT_MUTED, fontWeight: 600 }}>{op.usdValue || "\u2014"}</span>
+                          ) : (
+                            <span>
+                              {compactAmount(op.amount)}
+                              {op.type === "StrategicSell" && op.roiPct !== undefined && (
+                                <span
+                                  className="block text-[9px] mt-0.5 font-semibold"
+                                  style={{ color: op.roiPct >= 0 ? "#43e397" : "#ff6b6b" }}
+                                >
+                                  {op.roiPct >= 0 ? "+" : ""}
+                                  {op.roiPct.toFixed(0)}% ROI
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </span>
+                      </td>
+                      <td className="hidden sm:table-cell" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                        {op.usdValue}
+                      </td>
+                      <td style={{ color: TEXT_DIM }}>{op.date}</td>
+                      <td>
+                        {op.txHash ? (
+                          <a
+                            href={`https://basescan.org/tx/${op.txHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline"
+                            style={{ color: GOLD }}
+                          >
+                            View ↗
+                          </a>
+                        ) : (
+                          <span style={{ color: TEXT_DIM }}>{"\u2014"}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {filteredOps.length > opsVisible && (
+            <div className="p-4 text-center" style={{ borderTop: `1px solid ${CARD_BORDER}` }}>
+              <button
+                className="btn btn-sm btn-ghost text-sm"
+                style={{ color: TEXT_MUTED, fontWeight: 600 }}
+                onClick={() => setOpsVisible(v => v + 10)}
+              >
+                Load more
+              </button>
+            </div>
+          )}
+          <p className="sm:hidden px-4 pb-3 text-[10px]" style={{ color: TEXT_DIM }}>
+            Tap amount to see USD value
+          </p>
+        </div>
+      </div>
+
+      {/* Owner-only panels */}
+      {isOwner && (
+        <>
+          <AddStrategicTokenPanel />
+          <OwnerOperationsPanel />
+        </>
+      )}
+
+      {/* Contracts */}
+      <div className="max-w-4xl w-full px-4 mb-8">
+        <SectionTitle>Contracts</SectionTitle>
+        <div className="rounded-xl p-6 space-y-3" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
+          {(
+            [
+              ["\u20B8USD Token", TUSD],
+              ["\u20B8USD/WETH Pool", TUSD_POOL],
+              ["BurnEngine", BURN_ENGINE],
+              ["LegacyFeeClaimer", LEGACY_FEE_CLAIMER],
+              ["Treasury Manager", TREASURY_V2],
+              ["Owner", ownerAddr || "0x0000000000000000000000000000000000000000"],
+              ["Operator", operatorAddr || "0x0000000000000000000000000000000000000000"],
+            ] as [string, `0x${string}`][]
+          ).map(([label, addr]) => (
+            <div key={`${label}-${addr}`} className="flex justify-between items-center">
+              <span className="text-sm" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                {label}
+              </span>
+              <span className="hide-address-avatar">
+                <Address address={addr} />
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="text-center text-sm space-y-2" style={{ color: TEXT_DIM }}>
+        <p>
+          <a
+            href="https://github.com/TurboUSD/Treasury-Manager"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:underline"
+            style={{ color: TEXT_DIM }}
+          >
+            {"📂 Open source on GitHub"}
+          </a>
+        </p>
+        <p>
+          <a
+            href="https://turbousd.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:underline"
+            style={{ color: GOLD }}
+          >
+            turbousd.com
+          </a>
+          {" · ₸USD Treasury · Powered by AMI"}
+        </p>
+      </div>
+    </div>
+  );
+};
+
+export default Home;
