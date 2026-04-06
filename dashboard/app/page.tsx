@@ -31,6 +31,9 @@ const STATE_VIEW = "0xA3c0c9b65baD0b08107Aa264b0f3dB444b867A71" as const;
 const LEGACY_FEE_SOURCE = "0x1eaf444ebDf6495C57aD52A04C61521bBf564ace" as const;
 const LP_FEE_SOURCE = "0x33e2Eda238edcF470309b8c6D228986A1204c8f9" as const;
 
+// Staking contract (TUSD staking on Base)
+const STAKING_CONTRACT = "0x2a70a42BC0524aBCA9Bff59a51E7aAdB575DC89A" as const;
+
 // The active treasury address — change when v2 is deployed
 const ACTIVE_TREASURY =
   (TREASURY_V2 as string) !== "0x0000000000000000000000000000000000000000" ? TREASURY_V2 : TREASURY_V1;
@@ -94,6 +97,16 @@ const transferEventAbi = {
     { type: "address", name: "from", indexed: true },
     { type: "address", name: "to", indexed: true },
     { type: "uint256", name: "value", indexed: false },
+  ],
+} as const;
+
+const strategicBuyEventAbi = {
+  type: "event",
+  name: "StrategicBuy",
+  inputs: [
+    { type: "address", name: "token", indexed: true },
+    { type: "uint256", name: "wethSpent", indexed: false },
+    { type: "uint256", name: "tokenReceived", indexed: false },
   ],
 } as const;
 
@@ -459,43 +472,7 @@ const HISTORICAL_OPS_RAW = [
     txHash: "0xb8df47dcd3ff0e07efa98007360dba7d0ab74058bd283163c9db397d34913f96",
     tusdAmount: 1_000,
   },
-  // ── Strategic Buys (real on-chain execution data) ──
-  {
-    type: "StrategicBuy" as const,
-    amount: "3,450,980 BNKR",
-    token: "BNKR",
-    usdValue: "", // computed dynamically from wethSpent * wethPrice
-    date: "2026-04-06",
-    txHash: "0xd53e31aa6d385ffc7591af5d72b365af310da559c817e75c37aeaacd59e6a0b8",
-    tusdAmount: 0,
-    wethSpent: 0.5,
-    tokenReceived: 3_450_980.479447143,
-    strategicToken: "0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3b",
-  },
-  {
-    type: "StrategicBuy" as const,
-    amount: "10,871,348 DRB",
-    token: "DRB",
-    usdValue: "",
-    date: "2026-04-06",
-    txHash: "0x629e9b161c0ebc42afb619c76c7e74f30c42cff474864690132544afdd7735ec",
-    tusdAmount: 0,
-    wethSpent: 0.5,
-    tokenReceived: 10_871_348.083552439,
-    strategicToken: "0x3ec2156D4c0A9CBdAB4a016633b7BcF6a8d68Ea2",
-  },
-  {
-    type: "StrategicBuy" as const,
-    amount: "38,009,374 CLAWD",
-    token: "CLAWD",
-    usdValue: "",
-    date: "2026-04-06",
-    txHash: "0xe155eaae48be06fea5c1bd7fe2831f10b15f6d4a07be1fa09e32469c97a39d82",
-    tusdAmount: 0,
-    wethSpent: 0.5,
-    tokenReceived: 38_009_374.872033096,
-    strategicToken: "0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07",
-  },
+  // StrategicBuy entries are read dynamically from on-chain events (see onChainBuys)
 ];
 
 // Total ₸USD already accounted for in HISTORICAL_OPS_RAW for BurnEngine
@@ -1383,6 +1360,15 @@ const Home: NextPage = () => {
     chainId: base.id,
   });
 
+  // ── TUSD locked in staking contract ──
+  const { data: tusdStakedBal } = useReadContract({
+    address: TUSD,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [STAKING_CONTRACT],
+    chainId: base.id,
+  });
+
   // ── Supply & burns ──
   const { data: tusdSupply } = useReadContract({
     address: TUSD,
@@ -1530,12 +1516,61 @@ const Home: NextPage = () => {
     chainId: base.id,
   });
 
+  const publicClient = usePublicClient({ chainId: base.id });
+
+  // ── On-chain StrategicBuy events — auto-discovers ALL buys, no manual maintenance ──
+  type StrategicBuyEvent = { token: string; wethSpent: number; tokenReceived: number; txHash: string; blockNumber: bigint; date: string };
+  const [onChainBuys, setOnChainBuys] = useState<StrategicBuyEvent[]>([]);
+
+  useEffect(() => {
+    if (!publicClient) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const currentBlock = await publicClient.getBlockNumber();
+        const now = Math.floor(Date.now() / 1000);
+        // Contract was deployed recently — scan from ~60 days back (generous range)
+        const fromBlock = currentBlock > 2_600_000n ? currentBlock - 2_600_000n : 0n;
+
+        const logs = await publicClient.getLogs({
+          address: ACTIVE_TREASURY as `0x${string}`,
+          event: strategicBuyEventAbi,
+          fromBlock,
+          toBlock: currentBlock,
+        });
+
+        if (cancelled) return;
+        const buys: StrategicBuyEvent[] = logs.map(l => {
+          // Estimate date from block number (~2s blocks on Base)
+          const blockDiff = Number(currentBlock - l.blockNumber);
+          const ts = now - blockDiff * 2;
+          const date = new Date(ts * 1000).toISOString().slice(0, 10);
+          return {
+            token: (l.args as { token: string }).token.toLowerCase(),
+            wethSpent: Number(formatEther((l.args as { wethSpent: bigint }).wethSpent)),
+            tokenReceived: Number(formatEther((l.args as { tokenReceived: bigint }).tokenReceived)),
+            txHash: l.transactionHash,
+            blockNumber: l.blockNumber,
+            date,
+          };
+        });
+        setOnChainBuys(buys);
+      } catch (e) {
+        console.error("Failed to fetch StrategicBuy events:", e);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [publicClient]);
+
   // ── Computed values ──
   const tusdBalNum = tusdBal ? Number(formatEther(tusdBal)) : 0;
   const wethBalNum = wethBal ? Number(formatEther(wethBal)) : 0;
   const usdcBalNum = usdcBal ? Number(formatUnits(usdcBal, 6)) : 0;
   const tusdSupplyNum = tusdSupply ? Number(formatEther(tusdSupply)) : 0;
   const tusdBurnedNum = tusdBurned ? Number(formatEther(tusdBurned)) : 0;
+  const tusdStakedNum = tusdStakedBal ? Number(formatEther(tusdStakedBal)) : 0;
 
   const tusdBalUsd = tusdBalNum * tusdPriceUsd;
   const wethBalUsd = wethBalNum * wethPriceUsd;
@@ -1552,7 +1587,8 @@ const Home: NextPage = () => {
   const buybackPct = tusdSupplyNum > 0 ? (totalBuybackTusd / tusdSupplyNum) * 100 : 0;
   const buybackUsd = totalBuybackTusd * tusdPriceUsd;
 
-  const totalStakedTusd = 0;
+  // Total ₸USD locked = treasury balance + staking contract balance
+  const totalLockedTusd = tusdBalNum + tusdStakedNum;
 
   const engineBurned = burnStatus ? Number(formatEther(burnStatus[0])) : 0;
   const engineCycles = burnStatus ? Number(burnStatus[2]) : 0;
@@ -1601,32 +1637,28 @@ const Home: NextPage = () => {
     firstBuyTxHash: string;
   };
 
-  // Build a map of buy-price data from HISTORICAL_OPS_RAW StrategicBuy entries
-  // lastOpIdx tracks position in the array so we can sort correctly when dates are identical
+  // Build buy-price data from on-chain StrategicBuy events — fully automatic, no manual maintenance
   const buyDataByToken = useMemo(() => {
-    const m: Record<string, { totalWeth: number; totalTokens: number; firstTx: string; firstDate: string; lastDate: string; lastOpIdx: number }> = {};
-    for (let i = 0; i < HISTORICAL_OPS_RAW.length; i++) {
-      const op = HISTORICAL_OPS_RAW[i];
-      if (op.type !== "StrategicBuy" || !("strategicToken" in op)) continue;
-      const key = (op as { strategicToken: string }).strategicToken.toLowerCase();
-      const weth = (op as { wethSpent: number }).wethSpent || 0;
-      const tokens = (op as { tokenReceived: number }).tokenReceived || 0;
+    const m: Record<string, { totalWeth: number; totalTokens: number; firstTx: string; lastTx: string; lastBlockNum: bigint; lastDate: string; firstDate: string }> = {};
+    for (const buy of onChainBuys) {
+      const key = buy.token;
       if (!m[key]) {
-        m[key] = { totalWeth: 0, totalTokens: 0, firstTx: op.txHash, firstDate: op.date, lastDate: op.date, lastOpIdx: i };
+        m[key] = { totalWeth: 0, totalTokens: 0, firstTx: buy.txHash, lastTx: buy.txHash, lastBlockNum: buy.blockNumber, lastDate: buy.date, firstDate: buy.date };
       }
-      m[key].totalWeth += weth;
-      m[key].totalTokens += tokens;
-      if (op.date >= m[key].lastDate) {
-        m[key].lastDate = op.date;
-        m[key].lastOpIdx = i;
+      m[key].totalWeth += buy.wethSpent;
+      m[key].totalTokens += buy.tokenReceived;
+      if (buy.blockNumber > m[key].lastBlockNum) {
+        m[key].lastBlockNum = buy.blockNumber;
+        m[key].lastTx = buy.txHash;
+        m[key].lastDate = buy.date;
       }
-      if (op.date < m[key].firstDate) {
-        m[key].firstDate = op.date;
-        m[key].firstTx = op.txHash;
+      if (buy.blockNumber < (m[key].lastBlockNum ?? buy.blockNumber)) {
+        m[key].firstTx = buy.txHash;
+        m[key].firstDate = buy.date;
       }
     }
     return m;
-  }, []);
+  }, [onChainBuys]);
 
   const strategicRows: StrategicRow[] = [
     {
@@ -1718,12 +1750,13 @@ const Home: NextPage = () => {
       if (bd && bd.totalTokens > 0) {
         // Price per token in WETH, then convert to USD with current WETH price
         buyPrice = (bd.totalWeth / bd.totalTokens) * wethPriceUsd;
-        lastOpDate = bd.lastDate;
-        lastOpIdx = bd.lastOpIdx;
+        // Use block number as ordering key (higher = more recent)
+        lastOpIdx = Number(bd.lastBlockNum);
+        lastOpDate = bd.firstDate; // date of first buy (entry date)
         firstBuyTxHash = bd.firstTx;
       } else {
-        // Fallback to preset if no operations exist yet
-        buyPrice = Number(row.preset.buyPriceUsd);
+        // Fallback to preset if no on-chain events found yet
+        buyPrice = Number(row.preset.buyPriceUsd) || 0;
         lastOpDate = row.preset.entryDate;
         lastOpIdx = -1;
         firstBuyTxHash = row.preset.entryTxHash;
@@ -1732,12 +1765,8 @@ const Home: NextPage = () => {
       return { ...row, valueUsd, roi, computedBuyPrice: buyPrice, lastOpDate, lastOpIdx, firstBuyTxHash };
     })
     .filter(row => row.balance > 0)
-    // Sort by most recent operation first (newest → oldest); use array index as tiebreaker
-    .sort((a, b) => {
-      const dateCmp = b.lastOpDate.localeCompare(a.lastOpDate);
-      if (dateCmp !== 0) return dateCmp;
-      return b.lastOpIdx - a.lastOpIdx;
-    });
+    // Sort by most recent operation first (highest block number = most recent)
+    .sort((a, b) => b.lastOpIdx - a.lastOpIdx);
 
   const hasStrategicTokens = strategicRows.length > 0;
 
@@ -1760,7 +1789,6 @@ const Home: NextPage = () => {
   // ── Chart data: on-chain Transfer events → stacked daily snapshots ──
   // Historical snapshots are fetched once (async), "Today" is appended reactively from live balances.
   type DailySnapshot = { date: string; tusd: number; weth: number; usdc: number; strategic: number };
-  const publicClient = usePublicClient({ chainId: base.id });
   const [historicalSnapshots, setHistoricalSnapshots] = useState<DailySnapshot[]>([]);
   const [historyFetched, setHistoryFetched] = useState(false);
 
@@ -1897,13 +1925,18 @@ const Home: NextPage = () => {
     return [...historicalSnapshots, today];
   }, [historicalSnapshots, historyFetched, tusdBalUsd, wethBalUsd, usdcBalUsd, strategicTotalUsd]);
 
+  // Reverse lookup: token address → ticker
+  const tokenToTicker = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const p of STRATEGIC_PRESETS) m[p.token.toLowerCase()] = p.ticker;
+    return m;
+  }, []);
+
   const filteredOps = useMemo(() => {
     const allOps: Operation[] = HISTORICAL_OPS_RAW.map(op => {
       let usdValue: string;
       if (op.tusdAmount > 0 && tusdPriceUsd > 0) {
         usdValue = fmtUsd(op.tusdAmount * tusdPriceUsd);
-      } else if (op.type === "StrategicBuy" && "wethSpent" in op && wethPriceUsd > 0) {
-        usdValue = fmtUsd((op as { wethSpent: number }).wethSpent * wethPriceUsd);
       } else {
         usdValue = op.usdValue || "\u2014";
       }
@@ -1917,6 +1950,19 @@ const Home: NextPage = () => {
         roiPct: (op as Record<string, unknown>).roiPct as number | undefined,
       };
     });
+
+    // Append on-chain StrategicBuy events (auto-discovered, no manual entries needed)
+    for (const buy of onChainBuys) {
+      const ticker = tokenToTicker[buy.token] || buy.token.slice(0, 6);
+      allOps.push({
+        type: "StrategicBuy",
+        amount: `${fmtBig(buy.tokenReceived)} ${ticker}`,
+        token: ticker,
+        usdValue: wethPriceUsd > 0 ? fmtUsd(buy.wethSpent * wethPriceUsd) : "\u2014",
+        date: buy.date,
+        txHash: buy.txHash,
+      });
+    }
 
     // Only add a dynamic entry for NEW BurnEngine burns beyond the known historical ones
     const newEngineBurned = engineBurned - KNOWN_ENGINE_BURNED;
@@ -1958,7 +2004,7 @@ const Home: NextPage = () => {
     }
 
     return filtered;
-  }, [opsFilter, engineCycles, engineBurned, tusdPriceUsd, wethPriceUsd, engineLastCycle, opsSort]);
+  }, [opsFilter, engineCycles, engineBurned, tusdPriceUsd, wethPriceUsd, engineLastCycle, opsSort, onChainBuys, tokenToTicker]);
 
   // Sort toggle: click once = desc, click again = asc, click again = reset to default (date desc)
   const toggleSort = (col: "date" | "amount" | "usd") => {
@@ -2053,10 +2099,10 @@ const Home: NextPage = () => {
           subtitle={`${fmtPct(buybackPct)} of supply · ${fmtUsd(buybackUsd)}`}
         />
         <StatCard
-          title="Total Staked"
-          value={totalStakedTusd > 0 ? `${fmtBig(totalStakedTusd)} \u20B8USD` : "\u2014"}
+          title="Total Locked"
+          value={totalLockedTusd > 0 ? `${fmtBig(totalLockedTusd)} \u20B8USD` : "\u2014"}
           subtitle={
-            totalStakedTusd > 0 ? `${fmtPct((totalStakedTusd / tusdSupplyNum) * 100)} of supply` : "No staking yet"
+            totalLockedTusd > 0 ? `${fmtPct((totalLockedTusd / tusdSupplyNum) * 100)} of supply · ${fmtUsd(totalLockedTusd * tusdPriceUsd)}` : "No locked tokens"
           }
         />
       </div>
@@ -2219,7 +2265,7 @@ const Home: NextPage = () => {
               </table>
             </div>
             <p className="sm:hidden px-4 pb-3 text-[10px]" style={{ color: TEXT_DIM }}>
-              Tap amount to see USD value
+              Tap amount to see USD value and Entry for purchase price
             </p>
           </div>
         </div>
