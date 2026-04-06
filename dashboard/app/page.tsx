@@ -1658,17 +1658,28 @@ const Home: NextPage = () => {
         type LogEntry = { block: bigint; token: string; amount: bigint; dir: 1 | -1 };
         const allLogs: LogEntry[] = [];
 
+        // Core tokens (TUSD, WETH, USDC) — scan all historical treasury addresses
+        const coreTokenAddrs = [TUSD, WETH_ADDR, USDC_ADDR].map(a => a.toLowerCase());
+        const coreAddrSet = new Set(coreTokenAddrs);
+        const coreTokens = tokenAddrs.filter(a => coreAddrSet.has(a.toLowerCase())) as `0x${string}`[];
+
+        // Strategic tokens — only count from the active (current) contract
+        const strategicTokens = tokenAddrs.filter(a => !coreAddrSet.has(a.toLowerCase())) as `0x${string}`[];
+
         for (const tAddr of treasuries) {
+          // Decide which token set to query for this treasury
+          const tokensForThisTreasury = tAddr === ACTIVE_TREASURY ? tokenAddrs : coreTokens;
+          if (tokensForThisTreasury.length === 0) continue;
           try {
             const [inLogs, outLogs] = await Promise.all([
               publicClient.getLogs({
-                address: tokenAddrs,
+                address: tokensForThisTreasury,
                 event: transferEventAbi,
                 args: { to: tAddr },
                 fromBlock: startBlock,
               }),
               publicClient.getLogs({
-                address: tokenAddrs,
+                address: tokensForThisTreasury,
                 event: transferEventAbi,
                 args: { from: tAddr },
                 fromBlock: startBlock,
@@ -1684,6 +1695,8 @@ const Home: NextPage = () => {
             // If one treasury range fails, continue with others
           }
         }
+        // Suppress unused variable warning
+        void strategicTokens;
 
         allLogs.sort((a, b) => Number(a.block - b.block));
 
