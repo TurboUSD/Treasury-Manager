@@ -550,7 +550,7 @@ function compactAmount(s: string): string {
 }
 
 function fmtPct(n: number): string {
-  return `${n.toFixed(4)}%`;
+  return `${n.toFixed(2)}%`;
 }
 
 // ── Cache tiers (staleTime for React Query — prevents re-fetch while data is fresh) ──
