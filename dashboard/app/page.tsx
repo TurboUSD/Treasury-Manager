@@ -138,12 +138,18 @@ const legacyFeeClaimerAbi = [
 
 const treasuryV2Abi = [
   {
-    name: "owner", type: "function", stateMutability: "view",
-    inputs: [], outputs: [{ name: "", type: "address" }],
+    name: "owner",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
   },
   {
-    name: "authorizedOperator", type: "function", stateMutability: "view",
-    inputs: [], outputs: [{ name: "", type: "address" }],
+    name: "authorizedOperator",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
   },
   {
     name: "addStrategicToken",
@@ -291,20 +297,104 @@ const treasuryV2Abi = [
     outputs: [],
   },
   // State variable readers for current limits
-  { name: "buybackWethPerAction", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "buybackWethPerDay", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "buybackUsdcPerAction", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "buybackUsdcPerDay", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "burnTusdPerAction", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "burnTusdPerDay", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "stakeTusdPerAction", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "stakeTusdPerDay", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "operatorCooldown", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "operatorSlippageBps", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "rebalanceWethPerAction", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "rebalanceWethPerDay", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "buyStrategicWethPerAction", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { name: "buyStrategicWethPerDay", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  {
+    name: "buybackWethPerAction",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "buybackWethPerDay",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "buybackUsdcPerAction",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "buybackUsdcPerDay",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "burnTusdPerAction",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "burnTusdPerDay",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "stakeTusdPerAction",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "stakeTusdPerDay",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "operatorCooldown",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "operatorSlippageBps",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "rebalanceWethPerAction",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "rebalanceWethPerDay",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "buyStrategicWethPerAction",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "buyStrategicWethPerDay",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
 ] as const;
 
 // ── Strategic Token Presets ──────────────────────────────────────────────
@@ -655,10 +745,7 @@ function CollapsibleSection({ title, children }: { title: string; children: Reac
   const [open, setOpen] = useState(false);
   return (
     <div className="max-w-4xl w-full px-4 mb-8">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="flex items-center justify-between w-full mb-4"
-      >
+      <button onClick={() => setOpen(o => !o)} className="flex items-center justify-between w-full mb-4">
         <h2 className="text-sm font-semibold uppercase tracking-widest" style={{ color: GOLD }}>
           {title}
         </h2>
@@ -1057,7 +1144,12 @@ function OperatorLimitsPanel() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
   // Read current limits
-  const limitReadBase = { address: ACTIVE_TREASURY as `0x${string}`, abi: treasuryV2Abi, chainId: base.id, query: { staleTime: STALE_SLOW } } as const;
+  const limitReadBase = {
+    address: ACTIVE_TREASURY as `0x${string}`,
+    abi: treasuryV2Abi,
+    chainId: base.id,
+    query: { staleTime: STALE_SLOW },
+  } as const;
   const { data: curBuybackWethPA } = useReadContract({ ...limitReadBase, functionName: "buybackWethPerAction" });
   const { data: curBuybackWethPD } = useReadContract({ ...limitReadBase, functionName: "buybackWethPerDay" });
   const { data: curBuybackUsdcPA } = useReadContract({ ...limitReadBase, functionName: "buybackUsdcPerAction" });
@@ -1073,8 +1165,8 @@ function OperatorLimitsPanel() {
   const { data: curBuyStratPA } = useReadContract({ ...limitReadBase, functionName: "buyStrategicWethPerAction" });
   const { data: curBuyStratPD } = useReadContract({ ...limitReadBase, functionName: "buyStrategicWethPerDay" });
 
-  const toEth = (v: bigint | undefined, dec = 18) => v ? Number(v) / 10 ** dec : 0;
-  const toSec = (v: bigint | undefined) => v ? Number(v) : 0;
+  const toEth = (v: bigint | undefined, dec = 18) => (v ? Number(v) / 10 ** dec : 0);
+  const toSec = (v: bigint | undefined) => (v ? Number(v) : 0);
 
   // Form state — all in human units
   const [buybackWethPA, setBuybackWethPA] = useState("");
@@ -1097,9 +1189,23 @@ function OperatorLimitsPanel() {
   const inputStyle = { background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" };
   const labelStyle = { color: TEXT_MUTED, fontWeight: 600 } as const;
 
-  const LimitInput = ({ label, value, onChange, current, unit }: { label: string; value: string; onChange: (v: string) => void; current: string; unit: string }) => (
+  const LimitInput = ({
+    label,
+    value,
+    onChange,
+    current,
+    unit,
+  }: {
+    label: string;
+    value: string;
+    onChange: (v: string) => void;
+    current: string;
+    unit: string;
+  }) => (
     <div>
-      <label className="text-xs mb-1 block" style={labelStyle}>{label}</label>
+      <label className="text-xs mb-1 block" style={labelStyle}>
+        {label}
+      </label>
       <input
         className="w-full rounded-lg px-3 py-2 text-sm font-mono"
         style={inputStyle}
@@ -1108,12 +1214,15 @@ function OperatorLimitsPanel() {
         value={value}
         onChange={e => onChange(e.target.value)}
       />
-      <p className="text-[10px] mt-0.5" style={{ color: TEXT_DIM }}>Current: {current} {unit}</p>
+      <p className="text-[10px] mt-0.5" style={{ color: TEXT_DIM }}>
+        Current: {current} {unit}
+      </p>
     </div>
   );
 
   const handleCoreLimits = () => {
-    const p = (v: string, fb: bigint | undefined, dec = 18) => v ? BigInt(Math.round(Number(v) * 10 ** dec)) : fb ?? 0n;
+    const p = (v: string, fb: bigint | undefined, dec = 18) =>
+      v ? BigInt(Math.round(Number(v) * 10 ** dec)) : (fb ?? 0n);
     writeContract({
       address: ACTIVE_TREASURY as `0x${string}`,
       abi: treasuryV2Abi,
@@ -1132,8 +1241,8 @@ function OperatorLimitsPanel() {
   };
 
   const handleConfig = () => {
-    const cd = cooldownMin ? BigInt(Math.round(Number(cooldownMin) * 60)) : (curCooldown as bigint) ?? 0n;
-    const sl = slippageBps ? BigInt(Math.round(Number(slippageBps))) : (curSlippage as bigint) ?? 0n;
+    const cd = cooldownMin ? BigInt(Math.round(Number(cooldownMin) * 60)) : ((curCooldown as bigint) ?? 0n);
+    const sl = slippageBps ? BigInt(Math.round(Number(slippageBps))) : ((curSlippage as bigint) ?? 0n);
     writeContract({
       address: ACTIVE_TREASURY as `0x${string}`,
       abi: treasuryV2Abi,
@@ -1143,17 +1252,20 @@ function OperatorLimitsPanel() {
   };
 
   const handleRebalance = () => {
-    const p = (v: string, fb: bigint | undefined) => v ? BigInt(Math.round(Number(v) * 1e18)) : fb ?? 0n;
+    const p = (v: string, fb: bigint | undefined) => (v ? BigInt(Math.round(Number(v) * 1e18)) : (fb ?? 0n));
     writeContract({
       address: ACTIVE_TREASURY as `0x${string}`,
       abi: treasuryV2Abi,
       functionName: "setRebalanceLimits",
-      args: [p(rebalancePA, curRebalancePA as bigint | undefined), p(rebalancePD, curRebalancePD as bigint | undefined)],
+      args: [
+        p(rebalancePA, curRebalancePA as bigint | undefined),
+        p(rebalancePD, curRebalancePD as bigint | undefined),
+      ],
     });
   };
 
   const handleBuyStrat = () => {
-    const p = (v: string, fb: bigint | undefined) => v ? BigInt(Math.round(Number(v) * 1e18)) : fb ?? 0n;
+    const p = (v: string, fb: bigint | undefined) => (v ? BigInt(Math.round(Number(v) * 1e18)) : (fb ?? 0n));
     writeContract({
       address: ACTIVE_TREASURY as `0x${string}`,
       abi: treasuryV2Abi,
@@ -1176,7 +1288,10 @@ function OperatorLimitsPanel() {
         {tabs.map(t => (
           <button
             key={t.id}
-            onClick={() => { setActiveTab(t.id); reset(); }}
+            onClick={() => {
+              setActiveTab(t.id);
+              reset();
+            }}
             className="px-3 py-1.5 rounded-full text-xs font-semibold transition-colors"
             style={{
               background: activeTab === t.id ? GOLD : "transparent",
@@ -1192,17 +1307,66 @@ function OperatorLimitsPanel() {
       {activeTab === "core" && (
         <div className="space-y-4">
           <p className="text-xs" style={{ color: TEXT_DIM }}>
-            Enter in standard units (e.g. 1.5 WETH, 500 USDC, 10000 ₸USD) — conversion to wei is automatic. Leave blank to keep current value.
+            Enter in standard units (e.g. 1.5 WETH, 500 USDC, 10000 ₸USD) — conversion to wei is automatic. Leave blank
+            to keep current value.
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <LimitInput label="Buyback WETH / Action" value={buybackWethPA} onChange={setBuybackWethPA} current={toEth(curBuybackWethPA as bigint | undefined).toString()} unit="WETH" />
-            <LimitInput label="Buyback WETH / Day" value={buybackWethPD} onChange={setBuybackWethPD} current={toEth(curBuybackWethPD as bigint | undefined).toString()} unit="WETH" />
-            <LimitInput label="Buyback USDC / Action" value={buybackUsdcPA} onChange={setBuybackUsdcPA} current={toEth(curBuybackUsdcPA as bigint | undefined, 6).toString()} unit="USDC" />
-            <LimitInput label="Buyback USDC / Day" value={buybackUsdcPD} onChange={setBuybackUsdcPD} current={toEth(curBuybackUsdcPD as bigint | undefined, 6).toString()} unit="USDC" />
-            <LimitInput label="Burn ₸USD / Action" value={burnTusdPA} onChange={setBurnTusdPA} current={toEth(curBurnTusdPA as bigint | undefined).toString()} unit="₸USD" />
-            <LimitInput label="Burn ₸USD / Day" value={burnTusdPD} onChange={setBurnTusdPD} current={toEth(curBurnTusdPD as bigint | undefined).toString()} unit="₸USD" />
-            <LimitInput label="Stake ₸USD / Action" value={stakeTusdPA} onChange={setStakeTusdPA} current={toEth(curStakeTusdPA as bigint | undefined).toString()} unit="₸USD" />
-            <LimitInput label="Stake ₸USD / Day" value={stakeTusdPD} onChange={setStakeTusdPD} current={toEth(curStakeTusdPD as bigint | undefined).toString()} unit="₸USD" />
+            <LimitInput
+              label="Buyback WETH / Action"
+              value={buybackWethPA}
+              onChange={setBuybackWethPA}
+              current={toEth(curBuybackWethPA as bigint | undefined).toString()}
+              unit="WETH"
+            />
+            <LimitInput
+              label="Buyback WETH / Day"
+              value={buybackWethPD}
+              onChange={setBuybackWethPD}
+              current={toEth(curBuybackWethPD as bigint | undefined).toString()}
+              unit="WETH"
+            />
+            <LimitInput
+              label="Buyback USDC / Action"
+              value={buybackUsdcPA}
+              onChange={setBuybackUsdcPA}
+              current={toEth(curBuybackUsdcPA as bigint | undefined, 6).toString()}
+              unit="USDC"
+            />
+            <LimitInput
+              label="Buyback USDC / Day"
+              value={buybackUsdcPD}
+              onChange={setBuybackUsdcPD}
+              current={toEth(curBuybackUsdcPD as bigint | undefined, 6).toString()}
+              unit="USDC"
+            />
+            <LimitInput
+              label="Burn ₸USD / Action"
+              value={burnTusdPA}
+              onChange={setBurnTusdPA}
+              current={toEth(curBurnTusdPA as bigint | undefined).toString()}
+              unit="₸USD"
+            />
+            <LimitInput
+              label="Burn ₸USD / Day"
+              value={burnTusdPD}
+              onChange={setBurnTusdPD}
+              current={toEth(curBurnTusdPD as bigint | undefined).toString()}
+              unit="₸USD"
+            />
+            <LimitInput
+              label="Stake ₸USD / Action"
+              value={stakeTusdPA}
+              onChange={setStakeTusdPA}
+              current={toEth(curStakeTusdPA as bigint | undefined).toString()}
+              unit="₸USD"
+            />
+            <LimitInput
+              label="Stake ₸USD / Day"
+              value={stakeTusdPD}
+              onChange={setStakeTusdPD}
+              current={toEth(curStakeTusdPD as bigint | undefined).toString()}
+              unit="₸USD"
+            />
           </div>
           <button
             onClick={handleCoreLimits}
@@ -1218,11 +1382,24 @@ function OperatorLimitsPanel() {
       {activeTab === "config" && (
         <div className="space-y-4">
           <p className="text-xs" style={{ color: TEXT_DIM }}>
-            Cooldown in minutes between operator actions. Slippage in basis points (100 = 1%, max 1000 = 10%). Leave blank to keep current.
+            Cooldown in minutes between operator actions. Slippage in basis points (100 = 1%, max 1000 = 10%). Leave
+            blank to keep current.
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <LimitInput label="Cooldown (minutes)" value={cooldownMin} onChange={setCooldownMin} current={(toSec(curCooldown as bigint | undefined) / 60).toString()} unit="min" />
-            <LimitInput label="Slippage (bps)" value={slippageBps} onChange={setSlippageBps} current={toSec(curSlippage as bigint | undefined).toString()} unit="bps" />
+            <LimitInput
+              label="Cooldown (minutes)"
+              value={cooldownMin}
+              onChange={setCooldownMin}
+              current={(toSec(curCooldown as bigint | undefined) / 60).toString()}
+              unit="min"
+            />
+            <LimitInput
+              label="Slippage (bps)"
+              value={slippageBps}
+              onChange={setSlippageBps}
+              current={toSec(curSlippage as bigint | undefined).toString()}
+              unit="bps"
+            />
           </div>
           <button
             onClick={handleConfig}
@@ -1238,11 +1415,24 @@ function OperatorLimitsPanel() {
       {activeTab === "rebalance" && (
         <div className="space-y-4">
           <p className="text-xs" style={{ color: TEXT_DIM }}>
-            WETH limits for rebalanceStrategicToken. Enter in standard units (e.g. 0.5 WETH). Leave blank to keep current.
+            WETH limits for rebalanceStrategicToken. Enter in standard units (e.g. 0.5 WETH). Leave blank to keep
+            current.
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <LimitInput label="Rebalance WETH / Action" value={rebalancePA} onChange={setRebalancePA} current={toEth(curRebalancePA as bigint | undefined).toString()} unit="WETH" />
-            <LimitInput label="Rebalance WETH / Day" value={rebalancePD} onChange={setRebalancePD} current={toEth(curRebalancePD as bigint | undefined).toString()} unit="WETH" />
+            <LimitInput
+              label="Rebalance WETH / Action"
+              value={rebalancePA}
+              onChange={setRebalancePA}
+              current={toEth(curRebalancePA as bigint | undefined).toString()}
+              unit="WETH"
+            />
+            <LimitInput
+              label="Rebalance WETH / Day"
+              value={rebalancePD}
+              onChange={setRebalancePD}
+              current={toEth(curRebalancePD as bigint | undefined).toString()}
+              unit="WETH"
+            />
           </div>
           <button
             onClick={handleRebalance}
@@ -1261,8 +1451,20 @@ function OperatorLimitsPanel() {
             WETH limits for buyStrategicToken. Enter in standard units (e.g. 0.5 WETH). Leave blank to keep current.
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <LimitInput label="Buy Strategic WETH / Action" value={buyStratPA} onChange={setBuyStratPA} current={toEth(curBuyStratPA as bigint | undefined).toString()} unit="WETH" />
-            <LimitInput label="Buy Strategic WETH / Day" value={buyStratPD} onChange={setBuyStratPD} current={toEth(curBuyStratPD as bigint | undefined).toString()} unit="WETH" />
+            <LimitInput
+              label="Buy Strategic WETH / Action"
+              value={buyStratPA}
+              onChange={setBuyStratPA}
+              current={toEth(curBuyStratPA as bigint | undefined).toString()}
+              unit="WETH"
+            />
+            <LimitInput
+              label="Buy Strategic WETH / Day"
+              value={buyStratPD}
+              onChange={setBuyStratPD}
+              current={toEth(curBuyStratPD as bigint | undefined).toString()}
+              unit="WETH"
+            />
           </div>
           <button
             onClick={handleBuyStrat}
@@ -1277,12 +1479,18 @@ function OperatorLimitsPanel() {
 
       {/* Status */}
       {writeError && (
-        <p className="text-xs mt-3 px-3 py-2 rounded-lg" style={{ background: "#1a0000", border: "1px solid #ff6b6b33", color: "#ff6b6b" }}>
+        <p
+          className="text-xs mt-3 px-3 py-2 rounded-lg"
+          style={{ background: "#1a0000", border: "1px solid #ff6b6b33", color: "#ff6b6b" }}
+        >
           {writeError.message?.slice(0, 200)}
         </p>
       )}
       {isSuccess && (
-        <p className="text-xs mt-3 px-3 py-2 rounded-lg" style={{ background: "#001a0a", border: "1px solid #34eeb633", color: "#34eeb6" }}>
+        <p
+          className="text-xs mt-3 px-3 py-2 rounded-lg"
+          style={{ background: "#001a0a", border: "1px solid #34eeb633", color: "#34eeb6" }}
+        >
           Limits updated successfully!
         </p>
       )}
@@ -1348,283 +1556,283 @@ function AddStrategicTokenPanel() {
   };
 
   return (
-      <div className="rounded-xl p-6" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
-        {/* Token selector */}
-        <div className="mb-6">
-          <label
-            className="text-xs font-medium uppercase tracking-wider mb-2 block"
-            style={{ color: TEXT_MUTED, fontWeight: 600 }}
-          >
-            Select Token
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {STRATEGIC_PRESETS.map(p => (
-              <button
-                key={p.ticker}
-                onClick={() => handleSelect(p.ticker)}
-                className="btn btn-sm"
-                style={{
-                  background: selected === p.ticker ? GOLD : "transparent",
-                  border: `1px solid ${selected === p.ticker ? GOLD : "#2a2a2a"}`,
-                  color: selected === p.ticker ? "#000" : "#888",
-                }}
-              >
-                {p.ticker}
-                <span className="text-xs opacity-60 ml-1">{p.isV4 ? "V4" : "V3"}</span>
-              </button>
-            ))}
+    <div className="rounded-xl p-6" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
+      {/* Token selector */}
+      <div className="mb-6">
+        <label
+          className="text-xs font-medium uppercase tracking-wider mb-2 block"
+          style={{ color: TEXT_MUTED, fontWeight: 600 }}
+        >
+          Select Token
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {STRATEGIC_PRESETS.map(p => (
             <button
-              onClick={() => handleSelect("CUSTOM")}
+              key={p.ticker}
+              onClick={() => handleSelect(p.ticker)}
               className="btn btn-sm"
               style={{
-                background: selected === "CUSTOM" ? "#555" : "transparent",
-                border: "1px solid #2a2a2a",
-                color: selected === "CUSTOM" ? "#fff" : "#888",
+                background: selected === p.ticker ? GOLD : "transparent",
+                border: `1px solid ${selected === p.ticker ? GOLD : "#2a2a2a"}`,
+                color: selected === p.ticker ? "#000" : "#888",
               }}
             >
-              CUSTOM
+              {p.ticker}
+              <span className="text-xs opacity-60 ml-1">{p.isV4 ? "V4" : "V3"}</span>
+            </button>
+          ))}
+          <button
+            onClick={() => handleSelect("CUSTOM")}
+            className="btn btn-sm"
+            style={{
+              background: selected === "CUSTOM" ? "#555" : "transparent",
+              border: "1px solid #2a2a2a",
+              color: selected === "CUSTOM" ? "#fff" : "#888",
+            }}
+          >
+            CUSTOM
+          </button>
+        </div>
+      </div>
+
+      {/* Form fields */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div>
+          <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+            Token Address
+          </label>
+          <input
+            className="input input-bordered w-full font-mono text-sm"
+            style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+            value={form.token}
+            onChange={e => updateField("token", e.target.value)}
+            disabled={selected !== "CUSTOM"}
+            placeholder="0x..."
+          />
+        </div>
+        <div>
+          <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+            Pool Version
+          </label>
+          <div className="flex gap-2 mt-1">
+            <button
+              className="btn btn-sm flex-1"
+              style={{
+                background: !form.isV4 ? GOLD : "transparent",
+                border: `1px solid ${!form.isV4 ? GOLD : "#2a2a2a"}`,
+                color: !form.isV4 ? "#000" : "#888",
+              }}
+              onClick={() => updateField("isV4", false)}
+              disabled={selected !== "CUSTOM"}
+            >
+              V3
+            </button>
+            <button
+              className="btn btn-sm flex-1"
+              style={{
+                background: form.isV4 ? GOLD : "transparent",
+                border: `1px solid ${form.isV4 ? GOLD : "#2a2a2a"}`,
+                color: form.isV4 ? "#000" : "#888",
+              }}
+              onClick={() => updateField("isV4", true)}
+              disabled={selected !== "CUSTOM"}
+            >
+              V4
             </button>
           </div>
         </div>
 
-        {/* Form fields */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div>
-            <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
-              Token Address
-            </label>
-            <input
-              className="input input-bordered w-full font-mono text-sm"
-              style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
-              value={form.token}
-              onChange={e => updateField("token", e.target.value)}
-              disabled={selected !== "CUSTOM"}
-              placeholder="0x..."
-            />
-          </div>
-          <div>
-            <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
-              Pool Version
-            </label>
-            <div className="flex gap-2 mt-1">
-              <button
-                className="btn btn-sm flex-1"
-                style={{
-                  background: !form.isV4 ? GOLD : "transparent",
-                  border: `1px solid ${!form.isV4 ? GOLD : "#2a2a2a"}`,
-                  color: !form.isV4 ? "#000" : "#888",
-                }}
-                onClick={() => updateField("isV4", false)}
+        {/* V3 fields */}
+        {!form.isV4 && (
+          <>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                V3 Pool Address
+              </label>
+              <input
+                className="input input-bordered w-full font-mono text-sm"
+                style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+                value={form.v3Pool}
+                onChange={e => updateField("v3Pool", e.target.value)}
                 disabled={selected !== "CUSTOM"}
-              >
-                V3
-              </button>
-              <button
-                className="btn btn-sm flex-1"
-                style={{
-                  background: form.isV4 ? GOLD : "transparent",
-                  border: `1px solid ${form.isV4 ? GOLD : "#2a2a2a"}`,
-                  color: form.isV4 ? "#000" : "#888",
-                }}
-                onClick={() => updateField("isV4", true)}
-                disabled={selected !== "CUSTOM"}
-              >
-                V4
-              </button>
+                placeholder="0x..."
+              />
             </div>
-          </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                V3 Fee
+              </label>
+              <input
+                className="input input-bordered w-full font-mono text-sm"
+                style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+                type="number"
+                value={form.v3Fee}
+                onChange={e => updateField("v3Fee", Number(e.target.value))}
+                disabled={selected !== "CUSTOM"}
+              />
+            </div>
+          </>
+        )}
 
-          {/* V3 fields */}
-          {!form.isV4 && (
-            <>
-              <div>
-                <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
-                  V3 Pool Address
-                </label>
-                <input
-                  className="input input-bordered w-full font-mono text-sm"
-                  style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
-                  value={form.v3Pool}
-                  onChange={e => updateField("v3Pool", e.target.value)}
-                  disabled={selected !== "CUSTOM"}
-                  placeholder="0x..."
-                />
-              </div>
-              <div>
-                <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
-                  V3 Fee
-                </label>
-                <input
-                  className="input input-bordered w-full font-mono text-sm"
-                  style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
-                  type="number"
-                  value={form.v3Fee}
-                  onChange={e => updateField("v3Fee", Number(e.target.value))}
-                  disabled={selected !== "CUSTOM"}
-                />
-              </div>
-            </>
-          )}
+        {/* V4 fields */}
+        {form.isV4 && (
+          <>
+            <div className="md:col-span-2">
+              <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                V4 Pool ID
+              </label>
+              <input
+                className="input input-bordered w-full font-mono text-xs"
+                style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+                value={form.v4PoolId}
+                onChange={e => updateField("v4PoolId", e.target.value)}
+                disabled={selected !== "CUSTOM"}
+                placeholder="0x..."
+              />
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                V4 Currency0
+              </label>
+              <input
+                className="input input-bordered w-full font-mono text-sm"
+                style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+                value={form.v4Currency0}
+                onChange={e => updateField("v4Currency0", e.target.value)}
+                disabled={selected !== "CUSTOM"}
+              />
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                V4 Currency1
+              </label>
+              <input
+                className="input input-bordered w-full font-mono text-sm"
+                style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+                value={form.v4Currency1}
+                onChange={e => updateField("v4Currency1", e.target.value)}
+                disabled={selected !== "CUSTOM"}
+              />
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                V4 Fee
+              </label>
+              <input
+                className="input input-bordered w-full font-mono text-sm"
+                style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+                type="number"
+                value={form.v4Fee}
+                onChange={e => updateField("v4Fee", Number(e.target.value))}
+                disabled={selected !== "CUSTOM"}
+              />
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                V4 Tick Spacing
+              </label>
+              <input
+                className="input input-bordered w-full font-mono text-sm"
+                style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+                type="number"
+                value={form.v4TickSpacing}
+                onChange={e => updateField("v4TickSpacing", Number(e.target.value))}
+                disabled={selected !== "CUSTOM"}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                V4 Hooks
+              </label>
+              <input
+                className="input input-bordered w-full font-mono text-sm"
+                style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+                value={form.v4Hooks}
+                onChange={e => updateField("v4Hooks", e.target.value)}
+                disabled={selected !== "CUSTOM"}
+              />
+            </div>
+          </>
+        )}
 
-          {/* V4 fields */}
-          {form.isV4 && (
-            <>
-              <div className="md:col-span-2">
-                <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
-                  V4 Pool ID
-                </label>
-                <input
-                  className="input input-bordered w-full font-mono text-xs"
-                  style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
-                  value={form.v4PoolId}
-                  onChange={e => updateField("v4PoolId", e.target.value)}
-                  disabled={selected !== "CUSTOM"}
-                  placeholder="0x..."
-                />
-              </div>
-              <div>
-                <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
-                  V4 Currency0
-                </label>
-                <input
-                  className="input input-bordered w-full font-mono text-sm"
-                  style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
-                  value={form.v4Currency0}
-                  onChange={e => updateField("v4Currency0", e.target.value)}
-                  disabled={selected !== "CUSTOM"}
-                />
-              </div>
-              <div>
-                <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
-                  V4 Currency1
-                </label>
-                <input
-                  className="input input-bordered w-full font-mono text-sm"
-                  style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
-                  value={form.v4Currency1}
-                  onChange={e => updateField("v4Currency1", e.target.value)}
-                  disabled={selected !== "CUSTOM"}
-                />
-              </div>
-              <div>
-                <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
-                  V4 Fee
-                </label>
-                <input
-                  className="input input-bordered w-full font-mono text-sm"
-                  style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
-                  type="number"
-                  value={form.v4Fee}
-                  onChange={e => updateField("v4Fee", Number(e.target.value))}
-                  disabled={selected !== "CUSTOM"}
-                />
-              </div>
-              <div>
-                <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
-                  V4 Tick Spacing
-                </label>
-                <input
-                  className="input input-bordered w-full font-mono text-sm"
-                  style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
-                  type="number"
-                  value={form.v4TickSpacing}
-                  onChange={e => updateField("v4TickSpacing", Number(e.target.value))}
-                  disabled={selected !== "CUSTOM"}
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
-                  V4 Hooks
-                </label>
-                <input
-                  className="input input-bordered w-full font-mono text-sm"
-                  style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
-                  value={form.v4Hooks}
-                  onChange={e => updateField("v4Hooks", e.target.value)}
-                  disabled={selected !== "CUSTOM"}
-                />
-              </div>
-            </>
-          )}
-
-          <div>
-            <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
-              Buy Price (USD)
-            </label>
-            <input
-              className="input input-bordered w-full font-mono text-sm"
-              style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
-              value={form.buyPriceUsd}
-              onChange={e => updateField("buyPriceUsd", e.target.value)}
-              placeholder="0.001"
-            />
-          </div>
-          <div>
-            <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
-              Buy Market Cap (USD)
-            </label>
-            <input
-              className="input input-bordered w-full font-mono text-sm"
-              style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
-              value={form.buyMarketCapUsd}
-              onChange={e => updateField("buyMarketCapUsd", e.target.value)}
-              placeholder="1000000"
-            />
-          </div>
+        <div>
+          <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+            Buy Price (USD)
+          </label>
+          <input
+            className="input input-bordered w-full font-mono text-sm"
+            style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+            value={form.buyPriceUsd}
+            onChange={e => updateField("buyPriceUsd", e.target.value)}
+            placeholder="0.001"
+          />
         </div>
-
-        {isAlreadyAdded && (
-          <div
-            className="rounded-lg p-3 mb-4 text-sm"
-            style={{ background: "#1a1500", border: "1px solid #ffcf7233", color: "#ffcf72" }}
-          >
-            This token is already added to the contract.
-          </div>
-        )}
-        {writeError && (
-          <div
-            className="rounded-lg p-3 mb-4 text-sm"
-            style={{ background: "#1a0000", border: "1px solid #ff6b6b33", color: "#ff6b6b" }}
-          >
-            {writeError.message?.slice(0, 200)}
-          </div>
-        )}
-        {isSuccess && (
-          <div
-            className="rounded-lg p-3 mb-4 text-sm"
-            style={{ background: "#001a0a", border: "1px solid #34eeb633", color: "#34eeb6" }}
-          >
-            Token added successfully!{" "}
-            {txHash && (
-              <a
-                href={`https://basescan.org/tx/${txHash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline"
-              >
-                View tx ↗
-              </a>
-            )}
-          </div>
-        )}
-
-        <button
-          className="btn w-full"
-          onClick={handleSubmit}
-          style={{ background: GOLD, border: `1px solid ${GOLD}`, color: "#000", fontWeight: 700 }}
-          disabled={
-            isPending || isConfirming || isAlreadyAdded || !form.token || !form.buyPriceUsd || !form.buyMarketCapUsd
-          }
-        >
-          {isPending
-            ? "Confirm in wallet…"
-            : isConfirming
-              ? "Confirming…"
-              : isAlreadyAdded
-                ? "Already Added"
-                : `Add ${selected !== "CUSTOM" ? selected : "Token"}`}
-        </button>
+        <div>
+          <label className="text-xs mb-1 block" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+            Buy Market Cap (USD)
+          </label>
+          <input
+            className="input input-bordered w-full font-mono text-sm"
+            style={{ background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" }}
+            value={form.buyMarketCapUsd}
+            onChange={e => updateField("buyMarketCapUsd", e.target.value)}
+            placeholder="1000000"
+          />
+        </div>
       </div>
+
+      {isAlreadyAdded && (
+        <div
+          className="rounded-lg p-3 mb-4 text-sm"
+          style={{ background: "#1a1500", border: "1px solid #ffcf7233", color: "#ffcf72" }}
+        >
+          This token is already added to the contract.
+        </div>
+      )}
+      {writeError && (
+        <div
+          className="rounded-lg p-3 mb-4 text-sm"
+          style={{ background: "#1a0000", border: "1px solid #ff6b6b33", color: "#ff6b6b" }}
+        >
+          {writeError.message?.slice(0, 200)}
+        </div>
+      )}
+      {isSuccess && (
+        <div
+          className="rounded-lg p-3 mb-4 text-sm"
+          style={{ background: "#001a0a", border: "1px solid #34eeb633", color: "#34eeb6" }}
+        >
+          Token added successfully!{" "}
+          {txHash && (
+            <a
+              href={`https://basescan.org/tx/${txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline"
+            >
+              View tx ↗
+            </a>
+          )}
+        </div>
+      )}
+
+      <button
+        className="btn w-full"
+        onClick={handleSubmit}
+        style={{ background: GOLD, border: `1px solid ${GOLD}`, color: "#000", fontWeight: 700 }}
+        disabled={
+          isPending || isConfirming || isAlreadyAdded || !form.token || !form.buyPriceUsd || !form.buyMarketCapUsd
+        }
+      >
+        {isPending
+          ? "Confirm in wallet…"
+          : isConfirming
+            ? "Confirming…"
+            : isAlreadyAdded
+              ? "Already Added"
+              : `Add ${selected !== "CUSTOM" ? selected : "Token"}`}
+      </button>
+    </div>
   );
 }
 
@@ -1638,27 +1846,46 @@ const Home: NextPage = () => {
   // Sort state: column + direction. null = default (date desc = newest first)
   const [opsSort, setOpsSort] = useState<{ col: "date" | "amount" | "usd"; dir: "asc" | "desc" } | null>(null);
   // Strategic table sort state
-  const [stratSort, setStratSort] = useState<{ col: "amount" | "usd" | "buyprice" | "entry" | "roi"; dir: "asc" | "desc" } | null>(null);
+  const [stratSort, setStratSort] = useState<{
+    col: "amount" | "usd" | "buyprice" | "entry" | "roi";
+    dir: "asc" | "desc";
+  } | null>(null);
   const { address: connectedAddress } = useAccount();
 
   // ── Dynamic owner & operator reads (static — 24h cache) ──
   const { data: ownerAddr } = useReadContract({
-    address: ACTIVE_TREASURY as `0x${string}`, abi: treasuryV2Abi, functionName: "owner", chainId: base.id,
+    address: ACTIVE_TREASURY as `0x${string}`,
+    abi: treasuryV2Abi,
+    functionName: "owner",
+    chainId: base.id,
     query: { staleTime: STALE_STATIC },
   });
   const { data: operatorAddr } = useReadContract({
-    address: ACTIVE_TREASURY as `0x${string}`, abi: treasuryV2Abi, functionName: "authorizedOperator", chainId: base.id,
+    address: ACTIVE_TREASURY as `0x${string}`,
+    abi: treasuryV2Abi,
+    functionName: "authorizedOperator",
+    chainId: base.id,
     query: { staleTime: STALE_STATIC },
   });
-  const isOwner = !!(connectedAddress && ownerAddr && connectedAddress.toLowerCase() === (ownerAddr as string).toLowerCase());
+  const isOwner = !!(
+    connectedAddress &&
+    ownerAddr &&
+    connectedAddress.toLowerCase() === (ownerAddr as string).toLowerCase()
+  );
 
   // ── Pool prices (slow — 5min cache) ──
   const { data: usdcWethSlot0 } = useReadContract({
-    address: USDC_WETH_POOL, abi: poolAbi, functionName: "slot0", chainId: base.id,
+    address: USDC_WETH_POOL,
+    abi: poolAbi,
+    functionName: "slot0",
+    chainId: base.id,
     query: { staleTime: STALE_SLOW },
   });
   const { data: tusdPoolSlot0 } = useReadContract({
-    address: TUSD_POOL, abi: poolAbi, functionName: "slot0", chainId: base.id,
+    address: TUSD_POOL,
+    abi: poolAbi,
+    functionName: "slot0",
+    chainId: base.id,
     query: { staleTime: STALE_SLOW },
   });
 
@@ -1667,81 +1894,147 @@ const Home: NextPage = () => {
 
   // ── Treasury balances (medium — 1min cache) ──
   const { data: tusdBal } = useReadContract({
-    address: TUSD, abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    address: TUSD,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
     query: { staleTime: STALE_MED },
   });
   const { data: wethBal } = useReadContract({
-    address: WETH_ADDR, abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    address: WETH_ADDR,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
     query: { staleTime: STALE_MED },
   });
   const { data: usdcBal } = useReadContract({
-    address: USDC_ADDR, abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    address: USDC_ADDR,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
     query: { staleTime: STALE_MED },
   });
 
   // ── TUSD locked in staking contract (medium — 1min cache) ──
   const { data: tusdStakedBal } = useReadContract({
-    address: TUSD, abi: erc20Abi, functionName: "balanceOf", args: [STAKING_CONTRACT], chainId: base.id,
+    address: TUSD,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [STAKING_CONTRACT],
+    chainId: base.id,
     query: { staleTime: STALE_MED },
   });
 
   // ── Supply & burns (slow — 5min cache) ──
   const { data: tusdSupply } = useReadContract({
-    address: TUSD, abi: erc20Abi, functionName: "totalSupply", chainId: base.id,
+    address: TUSD,
+    abi: erc20Abi,
+    functionName: "totalSupply",
+    chainId: base.id,
     query: { staleTime: STALE_SLOW },
   });
   const { data: tusdBurned } = useReadContract({
-    address: TUSD, abi: erc20Abi, functionName: "balanceOf", args: [DEAD], chainId: base.id,
+    address: TUSD,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [DEAD],
+    chainId: base.id,
     query: { staleTime: STALE_SLOW },
   });
 
   // ── Burn engine status (slow — 5min cache) ──
   const { data: burnStatus } = useReadContract({
-    address: BURN_ENGINE, abi: burnEngineAbi, functionName: "getStatus", chainId: base.id,
+    address: BURN_ENGINE,
+    abi: burnEngineAbi,
+    functionName: "getStatus",
+    chainId: base.id,
     query: { staleTime: STALE_SLOW },
   });
 
   // ── Strategic token balances (medium — 1min cache) ──
   const { data: bnkrBal } = useReadContract({
-    address: "0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3b", abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    address: "0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3b",
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
     query: { staleTime: STALE_MED },
   });
   const { data: drbBal } = useReadContract({
-    address: "0x3ec2156D4c0A9CBdAB4a016633b7BcF6a8d68Ea2", abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    address: "0x3ec2156D4c0A9CBdAB4a016633b7BcF6a8d68Ea2",
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
     query: { staleTime: STALE_MED },
   });
   const { data: clankerBal } = useReadContract({
-    address: "0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb", abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    address: "0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb",
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
     query: { staleTime: STALE_MED },
   });
   const { data: kellyBal } = useReadContract({
-    address: "0x50D2280441372486BeecdD328c1854743EBaCb07", abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    address: "0x50D2280441372486BeecdD328c1854743EBaCb07",
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
     query: { staleTime: STALE_MED },
   });
   const { data: clawdBal } = useReadContract({
-    address: "0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07", abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    address: "0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07",
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
     query: { staleTime: STALE_MED },
   });
   const { data: junoBal } = useReadContract({
-    address: "0x4E6c9f48f73E54EE5F3AB7e2992B2d733D0d0b07", abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    address: "0x4E6c9f48f73E54EE5F3AB7e2992B2d733D0d0b07",
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
     query: { staleTime: STALE_MED },
   });
   const { data: felixBal } = useReadContract({
-    address: "0xf30Bf00edd0C22db54C9274B90D2A4C21FC09b07", abi: erc20Abi, functionName: "balanceOf", args: [ACTIVE_TREASURY], chainId: base.id,
+    address: "0xf30Bf00edd0C22db54C9274B90D2A4C21FC09b07",
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [ACTIVE_TREASURY],
+    chainId: base.id,
     query: { staleTime: STALE_MED },
   });
 
   // ── Pending fees (slow — 5min cache) ──
   const { data: legacyTusdPending } = useReadContract({
-    address: TUSD, abi: erc20Abi, functionName: "balanceOf", args: [LEGACY_FEE_SOURCE], chainId: base.id,
+    address: TUSD,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [LEGACY_FEE_SOURCE],
+    chainId: base.id,
     query: { staleTime: STALE_SLOW },
   });
   const { data: lpTusdPending } = useReadContract({
-    address: TUSD, abi: erc20Abi, functionName: "balanceOf", args: [LP_FEE_SOURCE], chainId: base.id,
+    address: TUSD,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [LP_FEE_SOURCE],
+    chainId: base.id,
     query: { staleTime: STALE_SLOW },
   });
   const { data: lpWethPending } = useReadContract({
-    address: WETH_ADDR, abi: erc20Abi, functionName: "balanceOf", args: [LP_FEE_SOURCE], chainId: base.id,
+    address: WETH_ADDR,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [LP_FEE_SOURCE],
+    chainId: base.id,
     query: { staleTime: STALE_SLOW },
   });
 
@@ -1805,7 +2098,14 @@ const Home: NextPage = () => {
   const publicClient = usePublicClient({ chainId: base.id });
 
   // ── On-chain StrategicBuy events — auto-discovers ALL buys, no manual maintenance ──
-  type StrategicBuyEvent = { token: string; wethSpent: number; tokenReceived: number; txHash: string; blockNumber: bigint; date: string };
+  type StrategicBuyEvent = {
+    token: string;
+    wethSpent: number;
+    tokenReceived: number;
+    txHash: string;
+    blockNumber: bigint;
+    date: string;
+  };
   const [onChainBuys, setOnChainBuys] = useState<StrategicBuyEvent[]>([]);
 
   useEffect(() => {
@@ -1847,7 +2147,9 @@ const Home: NextPage = () => {
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [publicClient]);
 
   // ── Computed values ──
@@ -1925,11 +2227,30 @@ const Home: NextPage = () => {
 
   // Build buy-price data from on-chain StrategicBuy events — fully automatic, no manual maintenance
   const buyDataByToken = useMemo(() => {
-    const m: Record<string, { totalWeth: number; totalTokens: number; firstTx: string; lastTx: string; lastBlockNum: bigint; lastDate: string; firstDate: string }> = {};
+    const m: Record<
+      string,
+      {
+        totalWeth: number;
+        totalTokens: number;
+        firstTx: string;
+        lastTx: string;
+        lastBlockNum: bigint;
+        lastDate: string;
+        firstDate: string;
+      }
+    > = {};
     for (const buy of onChainBuys) {
       const key = buy.token;
       if (!m[key]) {
-        m[key] = { totalWeth: 0, totalTokens: 0, firstTx: buy.txHash, lastTx: buy.txHash, lastBlockNum: buy.blockNumber, lastDate: buy.date, firstDate: buy.date };
+        m[key] = {
+          totalWeth: 0,
+          totalTokens: 0,
+          firstTx: buy.txHash,
+          lastTx: buy.txHash,
+          lastBlockNum: buy.blockNumber,
+          lastDate: buy.date,
+          firstDate: buy.date,
+        };
       }
       m[key].totalWeth += buy.wethSpent;
       m[key].totalTokens += buy.tokenReceived;
@@ -2134,10 +2455,12 @@ const Home: NextPage = () => {
               }),
             ]);
             for (const l of inLogs) {
-              if (l.args.value) allLogs.push({ block: l.blockNumber, token: l.address.toLowerCase(), amount: l.args.value, dir: 1 });
+              if (l.args.value)
+                allLogs.push({ block: l.blockNumber, token: l.address.toLowerCase(), amount: l.args.value, dir: 1 });
             }
             for (const l of outLogs) {
-              if (l.args.value) allLogs.push({ block: l.blockNumber, token: l.address.toLowerCase(), amount: l.args.value, dir: -1 });
+              if (l.args.value)
+                allLogs.push({ block: l.blockNumber, token: l.address.toLowerCase(), amount: l.args.value, dir: -1 });
             }
           } catch {
             // If one treasury range fails, continue with others
@@ -2168,7 +2491,10 @@ const Home: NextPage = () => {
         const dates = Object.keys(dailyMap).sort();
         const snapshots: DailySnapshot[] = dates.map(d => {
           const bals = dailyMap[d];
-          let tusd = 0, weth = 0, usdc = 0, strategic = 0;
+          let tusd = 0,
+            weth = 0,
+            usdc = 0,
+            strategic = 0;
           for (const [addr, bal] of Object.entries(bals)) {
             const info = tokenInfo[addr];
             if (!info) continue;
@@ -2194,7 +2520,9 @@ const Home: NextPage = () => {
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [publicClient, wethPriceUsd, tusdPriceUsd, strategicPriceMap]);
 
   // Combine historical snapshots with live "Today" data reactively
@@ -2290,7 +2618,17 @@ const Home: NextPage = () => {
     }
 
     return filtered;
-  }, [opsFilter, engineCycles, engineBurned, tusdPriceUsd, wethPriceUsd, engineLastCycle, opsSort, onChainBuys, tokenToTicker]);
+  }, [
+    opsFilter,
+    engineCycles,
+    engineBurned,
+    tusdPriceUsd,
+    wethPriceUsd,
+    engineLastCycle,
+    opsSort,
+    onChainBuys,
+    tokenToTicker,
+  ]);
 
   // Sort toggle: click once = desc, click again = asc, click again = reset to default (date desc)
   const toggleSort = (col: "date" | "amount" | "usd") => {
@@ -2388,7 +2726,9 @@ const Home: NextPage = () => {
           title={`\u20B8USD Locked`}
           value={totalLockedTusd > 0 ? fmtBig(totalLockedTusd) : "\u2014"}
           subtitle={
-            totalLockedTusd > 0 ? `${fmtPct((totalLockedTusd / tusdSupplyNum) * 100)} of supply (${fmtUsdShort(totalLockedTusd * tusdPriceUsd)})` : "No locked tokens"
+            totalLockedTusd > 0
+              ? `${fmtPct((totalLockedTusd / tusdSupplyNum) * 100)} of supply (${fmtUsdShort(totalLockedTusd * tusdPriceUsd)})`
+              : "No locked tokens"
           }
         />
       </div>
@@ -2439,28 +2779,32 @@ const Home: NextPage = () => {
                       style={{ color: stratSort?.col === "amount" ? "#fff" : TEXT_MUTED, background: "transparent" }}
                       onClick={() => toggleStratSort("amount")}
                     >
-                      Amount <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{stratSortIcon("amount")}</span>
+                      Amount{" "}
+                      <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{stratSortIcon("amount")}</span>
                     </th>
                     <th
                       className="text-[10px] sm:text-xs uppercase tracking-wider hidden sm:table-cell cursor-pointer select-none"
                       style={{ color: stratSort?.col === "usd" ? "#fff" : TEXT_MUTED, background: "transparent" }}
                       onClick={() => toggleStratSort("usd")}
                     >
-                      USD Value <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{stratSortIcon("usd")}</span>
+                      USD Value{" "}
+                      <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{stratSortIcon("usd")}</span>
                     </th>
                     <th
                       className="text-[10px] sm:text-xs uppercase tracking-wider hidden sm:table-cell cursor-pointer select-none"
                       style={{ color: stratSort?.col === "buyprice" ? "#fff" : TEXT_MUTED, background: "transparent" }}
                       onClick={() => toggleStratSort("buyprice")}
                     >
-                      Buy Price <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{stratSortIcon("buyprice")}</span>
+                      Buy Price{" "}
+                      <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{stratSortIcon("buyprice")}</span>
                     </th>
                     <th
                       className="text-[10px] sm:text-xs uppercase tracking-wider cursor-pointer select-none"
                       style={{ color: stratSort?.col === "entry" ? "#fff" : TEXT_MUTED, background: "transparent" }}
                       onClick={() => toggleStratSort("entry")}
                     >
-                      Entry <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{stratSortIcon("entry")}</span>
+                      Entry{" "}
+                      <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{stratSortIcon("entry")}</span>
                     </th>
                     <th
                       className="text-[10px] sm:text-xs uppercase tracking-wider cursor-pointer select-none"
@@ -2478,14 +2822,12 @@ const Home: NextPage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedStrategicRows.map((row, i) => {
+                  {sortedStrategicRows.map(row => {
                     const roiColor = row.roi === null ? TEXT_DIM : row.roi >= 0 ? "#43e397" : "#ff6b6b";
                     const roiLabel = row.roi === null ? "—" : `${row.roi >= 0 ? "+" : ""}${row.roi.toFixed(0)}%`;
                     const buyPriceFmt =
                       row.computedBuyPrice > 0
-                        ? `$${row.computedBuyPrice
-                            .toFixed(row.computedBuyPrice >= 1 ? 2 : 8)
-                            .replace(/\.?0+$/, "")}`
+                        ? `$${row.computedBuyPrice.toFixed(row.computedBuyPrice >= 1 ? 2 : 8).replace(/\.?0+$/, "")}`
                         : "—";
                     return (
                       <tr key={row.preset.ticker} style={{ borderBottom: `1px solid #111` }}>
@@ -2496,10 +2838,7 @@ const Home: NextPage = () => {
                           {/* Desktop: show amount */}
                           <span className="hidden sm:inline">{fmtBig(row.balance)}</span>
                           {/* Mobile: tap to toggle ALL rows USD */}
-                          <span
-                            className="sm:hidden cursor-pointer"
-                            onClick={() => setStratShowUsd(prev => !prev)}
-                          >
+                          <span className="sm:hidden cursor-pointer" onClick={() => setStratShowUsd(prev => !prev)}>
                             {stratShowUsd ? (
                               <span style={{ color: TEXT_MUTED, fontWeight: 600 }}>
                                 {row.valueUsd > 0 ? fmtUsd(row.valueUsd) : "—"}
@@ -2614,21 +2953,77 @@ const Home: NextPage = () => {
                     const d = payload[0]?.payload as DailySnapshot;
                     const total = (d.tusd || 0) + (d.weth || 0) + (d.usdc || 0) + (d.strategic || 0);
                     return (
-                      <div style={{ background: "#0c0c0c", border: "1px solid #1c1c1c", borderRadius: 8, padding: "8px 12px", color: "#e8e8e8", fontSize: 12, lineHeight: 1.4 }}>
+                      <div
+                        style={{
+                          background: "#0c0c0c",
+                          border: "1px solid #1c1c1c",
+                          borderRadius: 8,
+                          padding: "8px 12px",
+                          color: "#e8e8e8",
+                          fontSize: 12,
+                          lineHeight: 1.4,
+                        }}
+                      >
                         <p className="font-semibold mb-1">{d.date}</p>
-                        <p className="font-bold mb-1" style={{ color: GOLD }}>Total: {fmtUsd(total)}</p>
-                        {d.tusd > 0.01 && <p><span style={{ color: "#43e397" }}>₸USD:</span> {fmtUsd(d.tusd)}</p>}
-                        {d.weth > 0.01 && <p><span style={{ color: "#627eea" }}>WETH:</span> {fmtUsd(d.weth)}</p>}
-                        {d.usdc > 0.01 && <p><span style={{ color: "#2775ca" }}>USDC:</span> {fmtUsd(d.usdc)}</p>}
-                        {d.strategic > 0.01 && <p><span style={{ color: "#a78bfa" }}>Strategic:</span> {fmtUsd(d.strategic)}</p>}
+                        <p className="font-bold mb-1" style={{ color: GOLD }}>
+                          Total: {fmtUsd(total)}
+                        </p>
+                        {d.tusd > 0.01 && (
+                          <p>
+                            <span style={{ color: "#43e397" }}>₸USD:</span> {fmtUsd(d.tusd)}
+                          </p>
+                        )}
+                        {d.weth > 0.01 && (
+                          <p>
+                            <span style={{ color: "#627eea" }}>WETH:</span> {fmtUsd(d.weth)}
+                          </p>
+                        )}
+                        {d.usdc > 0.01 && (
+                          <p>
+                            <span style={{ color: "#2775ca" }}>USDC:</span> {fmtUsd(d.usdc)}
+                          </p>
+                        )}
+                        {d.strategic > 0.01 && (
+                          <p>
+                            <span style={{ color: "#a78bfa" }}>Strategic:</span> {fmtUsd(d.strategic)}
+                          </p>
+                        )}
                       </div>
                     );
                   }}
                 />
-                <Area type="monotone" dataKey="tusd" stackId="1" stroke="#43e397" fill="url(#gTusd)" strokeWidth={1.5} />
-                <Area type="monotone" dataKey="weth" stackId="1" stroke="#627eea" fill="url(#gWeth)" strokeWidth={1.5} />
-                <Area type="monotone" dataKey="usdc" stackId="1" stroke="#2775ca" fill="url(#gUsdc)" strokeWidth={1.5} />
-                <Area type="monotone" dataKey="strategic" stackId="1" stroke="#a78bfa" fill="url(#gStrat)" strokeWidth={1.5} />
+                <Area
+                  type="monotone"
+                  dataKey="tusd"
+                  stackId="1"
+                  stroke="#43e397"
+                  fill="url(#gTusd)"
+                  strokeWidth={1.5}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="weth"
+                  stackId="1"
+                  stroke="#627eea"
+                  fill="url(#gWeth)"
+                  strokeWidth={1.5}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="usdc"
+                  stackId="1"
+                  stroke="#2775ca"
+                  fill="url(#gUsdc)"
+                  strokeWidth={1.5}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="strategic"
+                  stackId="1"
+                  stroke="#a78bfa"
+                  fill="url(#gStrat)"
+                  strokeWidth={1.5}
+                />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
@@ -2792,10 +3187,7 @@ const Home: NextPage = () => {
                           )}
                         </span>
                         {/* Mobile: tap to toggle between amount and USD */}
-                        <span
-                          className="sm:hidden cursor-pointer"
-                          onClick={() => setOpsShowUsd(prev => !prev)}
-                        >
+                        <span className="sm:hidden cursor-pointer" onClick={() => setOpsShowUsd(prev => !prev)}>
                           {opsShowUsd ? (
                             <span style={{ color: TEXT_MUTED, fontWeight: 600 }}>{op.usdValue || "\u2014"}</span>
                           ) : (
@@ -2913,7 +3305,18 @@ const Home: NextPage = () => {
                       className="opacity-60 hover:opacity-100 transition-opacity"
                       title="Copy address"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#fff" }}>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{ color: "#fff" }}
+                      >
                         <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                         <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                       </svg>
@@ -2942,7 +3345,7 @@ const Home: NextPage = () => {
           >
             <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
               <svg height="16" width="16" viewBox="0 0 16 16" fill="white" xmlns="http://www.w3.org/2000/svg">
-                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
               </svg>
               Open source on GitHub
             </span>

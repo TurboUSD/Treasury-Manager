@@ -127,10 +127,7 @@ export const Header = () => {
   useOutsideClick(mobileMenuRef, () => setMobileOpen(false));
 
   return (
-    <div
-      className="sticky top-0 z-20 w-full"
-      style={{ background: "#000000" }}
-    >
+    <div className="sticky top-0 z-20 w-full" style={{ background: "#000000" }}>
       <div
         className="flex items-center justify-between h-14 px-4 max-w-7xl mx-auto lg:grid"
         style={{ gridTemplateColumns: "1fr auto 1fr" }}
@@ -179,15 +176,8 @@ export const Header = () => {
           {isLocalNetwork && <FaucetButton />}
 
           {/* Mobile burger toggle */}
-          <button
-            className="lg:hidden btn btn-ghost btn-sm px-1"
-            onClick={() => setMobileOpen(prev => !prev)}
-          >
-            {mobileOpen ? (
-              <XMarkIcon className="h-5 w-5 text-[#888]" />
-            ) : (
-              <Bars3Icon className="h-5 w-5 text-[#888]" />
-            )}
+          <button className="lg:hidden btn btn-ghost btn-sm px-1" onClick={() => setMobileOpen(prev => !prev)}>
+            {mobileOpen ? <XMarkIcon className="h-5 w-5 text-[#888]" /> : <Bars3Icon className="h-5 w-5 text-[#888]" />}
           </button>
         </div>
       </div>
@@ -205,7 +195,7 @@ export const Header = () => {
         >
           <style>{`@keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
           <div className="px-6 py-5 space-y-0">
-            {menuLinks.map(({ label, href, external }) => (
+            {menuLinks.map(({ label, href, external }) =>
               external ? (
                 <a
                   key={href}
@@ -228,8 +218,8 @@ export const Header = () => {
                 >
                   {label}
                 </Link>
-              )
-            ))}
+              ),
+            )}
 
             {/* Get ₸USD — green border button */}
             <div className="pt-5 pb-4">
@@ -243,8 +233,14 @@ export const Header = () => {
                   color: "#43e397",
                   background: "transparent",
                 }}
-                onMouseEnter={e => { e.currentTarget.style.background = "#43e397"; e.currentTarget.style.color = "#000"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#43e397"; }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = "#43e397";
+                  e.currentTarget.style.color = "#000";
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.color = "#43e397";
+                }}
                 onClick={() => setMobileOpen(false)}
               >
                 Get ₸USD
@@ -252,7 +248,10 @@ export const Header = () => {
             </div>
 
             {/* Social icons — single row */}
-            <div className="flex items-center gap-5 pt-3 pb-1 justify-center" style={{ borderTop: "1px solid #1a1a1a" }}>
+            <div
+              className="flex items-center gap-5 pt-3 pb-1 justify-center"
+              style={{ borderTop: "1px solid #1a1a1a" }}
+            >
               {SOCIAL_LINKS.map(({ label, href, icon }) => (
                 <a
                   key={label}
