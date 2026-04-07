@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { hardhat } from "viem/chains";
-import { Bars3Icon } from "@heroicons/react/24/outline";
+import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
 import { FaucetButton, RainbowKitCustomConnectButton } from "~~/components/scaffold-eth";
 import { useOutsideClick, useTargetNetwork } from "~~/hooks/scaffold-eth";
 
@@ -18,7 +18,7 @@ type HeaderMenuLink = {
 export const menuLinks: HeaderMenuLink[] = [
   { label: "Home", href: "https://turbousd.com", external: true },
   { label: "Dashboard", href: "/" },
-  { label: "Get ₸USD", href: "https://turbousd.com/buy", external: true },
+  { label: "AMI Overview", href: "https://turbousd.com/ami", external: true },
 ];
 
 // ── Social icons (SVG inline) ──────────────────────────────────────────────
@@ -121,19 +121,15 @@ export const HeaderMenuLinks = () => {
 export const Header = () => {
   const { targetNetwork } = useTargetNetwork();
   const isLocalNetwork = targetNetwork.id === hardhat.id;
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  const burgerMenuRef = useRef<HTMLDetailsElement>(null);
-  useOutsideClick(burgerMenuRef, () => {
-    burgerMenuRef?.current?.removeAttribute("open");
-  });
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+  useOutsideClick(mobileMenuRef, () => setMobileOpen(false));
 
   return (
     <div
       className="sticky top-0 z-20 w-full"
-      style={{
-        background: "#000000",
-        borderBottom: "none",
-      }}
+      style={{ background: "#000000" }}
     >
       <div
         className="flex items-center justify-between h-14 px-4 max-w-7xl mx-auto lg:grid"
@@ -182,35 +178,97 @@ export const Header = () => {
           <RainbowKitCustomConnectButton />
           {isLocalNetwork && <FaucetButton />}
 
-          {/* Mobile burger — inline with connect */}
-          <details className="dropdown dropdown-end lg:hidden" ref={burgerMenuRef}>
-            <summary className="btn btn-ghost btn-sm px-1">
+          {/* Mobile burger toggle */}
+          <button
+            className="lg:hidden btn btn-ghost btn-sm px-1"
+            onClick={() => setMobileOpen(prev => !prev)}
+          >
+            {mobileOpen ? (
+              <XMarkIcon className="h-5 w-5 text-[#888]" />
+            ) : (
               <Bars3Icon className="h-5 w-5 text-[#888]" />
-            </summary>
-            <ul
-              className="menu menu-compact dropdown-content mt-2 p-2 shadow-lg rounded-box w-35"
-              style={{ background: "#0c0c0c", border: "1px solid #1c1c1c" }}
-              onClick={() => burgerMenuRef?.current?.removeAttribute("open")}
-            >
-              <HeaderMenuLinks />
-              <li className="divider my-1" />
-              {SOCIAL_LINKS.map(({ label, href, icon }) => (
-                <li key={label}>
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-[#888] hover:text-[#43e397]"
-                  >
-                    {icon}
-                    <span className="text-sm">{label}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </details>
+            )}
+          </button>
         </div>
       </div>
+
+      {/* Mobile dropdown menu — slides down */}
+      {mobileOpen && (
+        <div
+          ref={mobileMenuRef}
+          className="lg:hidden"
+          style={{
+            background: "#0a0a0a",
+            borderTop: "1px solid #1a1a1a",
+            animation: "slideDown 0.2s ease-out",
+          }}
+        >
+          <style>{`@keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+          <div className="px-6 py-5 space-y-0">
+            {menuLinks.map(({ label, href, external }) => (
+              external ? (
+                <a
+                  key={href}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block py-3 text-[15px] font-medium text-white hover:text-[#43e397] transition-colors"
+                  style={{ borderBottom: "1px solid #1a1a1a" }}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  {label}
+                </a>
+              ) : (
+                <Link
+                  key={href}
+                  href={href}
+                  className="block py-3 text-[15px] font-medium text-white hover:text-[#43e397] transition-colors"
+                  style={{ borderBottom: "1px solid #1a1a1a" }}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  {label}
+                </Link>
+              )
+            ))}
+
+            {/* Get ₸USD — green border button */}
+            <div className="pt-5 pb-4">
+              <a
+                href="https://turbousd.com/buy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block text-center py-2.5 text-sm font-semibold rounded-full transition-all duration-200"
+                style={{
+                  border: "1.5px solid #43e397",
+                  color: "#43e397",
+                  background: "transparent",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = "#43e397"; e.currentTarget.style.color = "#000"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#43e397"; }}
+                onClick={() => setMobileOpen(false)}
+              >
+                Get ₸USD
+              </a>
+            </div>
+
+            {/* Social icons — single row */}
+            <div className="flex items-center gap-5 pt-3 pb-1 justify-center" style={{ borderTop: "1px solid #1a1a1a" }}>
+              {SOCIAL_LINKS.map(({ label, href, icon }) => (
+                <a
+                  key={label}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={label}
+                  className="text-[#888] hover:text-[#43e397] transition-colors p-1.5"
+                >
+                  {icon}
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

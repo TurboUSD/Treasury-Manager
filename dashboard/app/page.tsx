@@ -1057,22 +1057,21 @@ function OperatorLimitsPanel() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
   // Read current limits
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const r = (fn: any) => useReadContract({ address: ACTIVE_TREASURY as `0x${string}`, abi: treasuryV2Abi, functionName: fn, chainId: base.id, query: { staleTime: STALE_SLOW } });
-  const { data: curBuybackWethPA } = r("buybackWethPerAction");
-  const { data: curBuybackWethPD } = r("buybackWethPerDay");
-  const { data: curBuybackUsdcPA } = r("buybackUsdcPerAction");
-  const { data: curBuybackUsdcPD } = r("buybackUsdcPerDay");
-  const { data: curBurnTusdPA } = r("burnTusdPerAction");
-  const { data: curBurnTusdPD } = r("burnTusdPerDay");
-  const { data: curStakeTusdPA } = r("stakeTusdPerAction");
-  const { data: curStakeTusdPD } = r("stakeTusdPerDay");
-  const { data: curCooldown } = r("operatorCooldown");
-  const { data: curSlippage } = r("operatorSlippageBps");
-  const { data: curRebalancePA } = r("rebalanceWethPerAction");
-  const { data: curRebalancePD } = r("rebalanceWethPerDay");
-  const { data: curBuyStratPA } = r("buyStrategicWethPerAction");
-  const { data: curBuyStratPD } = r("buyStrategicWethPerDay");
+  const limitReadBase = { address: ACTIVE_TREASURY as `0x${string}`, abi: treasuryV2Abi, chainId: base.id, query: { staleTime: STALE_SLOW } } as const;
+  const { data: curBuybackWethPA } = useReadContract({ ...limitReadBase, functionName: "buybackWethPerAction" });
+  const { data: curBuybackWethPD } = useReadContract({ ...limitReadBase, functionName: "buybackWethPerDay" });
+  const { data: curBuybackUsdcPA } = useReadContract({ ...limitReadBase, functionName: "buybackUsdcPerAction" });
+  const { data: curBuybackUsdcPD } = useReadContract({ ...limitReadBase, functionName: "buybackUsdcPerDay" });
+  const { data: curBurnTusdPA } = useReadContract({ ...limitReadBase, functionName: "burnTusdPerAction" });
+  const { data: curBurnTusdPD } = useReadContract({ ...limitReadBase, functionName: "burnTusdPerDay" });
+  const { data: curStakeTusdPA } = useReadContract({ ...limitReadBase, functionName: "stakeTusdPerAction" });
+  const { data: curStakeTusdPD } = useReadContract({ ...limitReadBase, functionName: "stakeTusdPerDay" });
+  const { data: curCooldown } = useReadContract({ ...limitReadBase, functionName: "operatorCooldown" });
+  const { data: curSlippage } = useReadContract({ ...limitReadBase, functionName: "operatorSlippageBps" });
+  const { data: curRebalancePA } = useReadContract({ ...limitReadBase, functionName: "rebalanceWethPerAction" });
+  const { data: curRebalancePD } = useReadContract({ ...limitReadBase, functionName: "rebalanceWethPerDay" });
+  const { data: curBuyStratPA } = useReadContract({ ...limitReadBase, functionName: "buyStrategicWethPerAction" });
+  const { data: curBuyStratPD } = useReadContract({ ...limitReadBase, functionName: "buyStrategicWethPerDay" });
 
   const toEth = (v: bigint | undefined, dec = 18) => v ? Number(v) / 10 ** dec : 0;
   const toSec = (v: bigint | undefined) => v ? Number(v) : 0;
@@ -1633,9 +1632,9 @@ function AddStrategicTokenPanel() {
 const Home: NextPage = () => {
   const [opsVisible, setOpsVisible] = useState(10);
   const [opsFilter, setOpsFilter] = useState<string>("all");
-  const [opsShowUsd, setOpsShowUsd] = useState<Set<number>>(new Set());
-  const [stratShowUsd, setStratShowUsd] = useState<Set<number>>(new Set());
-  const [stratShowBuyPrice, setStratShowBuyPrice] = useState<Set<number>>(new Set());
+  const [opsShowUsd, setOpsShowUsd] = useState(false);
+  const [stratShowUsd, setStratShowUsd] = useState(false);
+  const [stratShowBuyPrice, setStratShowBuyPrice] = useState(false);
   // Sort state: column + direction. null = default (date desc = newest first)
   const [opsSort, setOpsSort] = useState<{ col: "date" | "amount" | "usd"; dir: "asc" | "desc" } | null>(null);
   // Strategic table sort state
@@ -2496,22 +2495,12 @@ const Home: NextPage = () => {
                         <td className="font-mono text-white">
                           {/* Desktop: show amount */}
                           <span className="hidden sm:inline">{fmtBig(row.balance)}</span>
-                          {/* Mobile: tap to toggle USD */}
+                          {/* Mobile: tap to toggle ALL rows USD */}
                           <span
                             className="sm:hidden cursor-pointer"
-                            onClick={() =>
-                              setStratShowUsd(prev => {
-                                const next = new Set(prev);
-                                if (next.has(i)) {
-                                  next.delete(i);
-                                } else {
-                                  next.add(i);
-                                }
-                                return next;
-                              })
-                            }
+                            onClick={() => setStratShowUsd(prev => !prev)}
                           >
-                            {stratShowUsd.has(i) ? (
+                            {stratShowUsd ? (
                               <span style={{ color: TEXT_MUTED, fontWeight: 600 }}>
                                 {row.valueUsd > 0 ? fmtUsd(row.valueUsd) : "—"}
                               </span>
@@ -2529,18 +2518,12 @@ const Home: NextPage = () => {
                         <td style={{ color: TEXT_DIM }}>
                           {/* Desktop: show date */}
                           <span className="hidden sm:inline">{row.lastOpDate || "—"}</span>
-                          {/* Mobile: tap to toggle buy price */}
+                          {/* Mobile: tap to toggle ALL rows buy price */}
                           <span
                             className="sm:hidden cursor-pointer"
-                            onClick={() =>
-                              setStratShowBuyPrice(prev => {
-                                const next = new Set(prev);
-                                if (next.has(i)) next.delete(i); else next.add(i);
-                                return next;
-                              })
-                            }
+                            onClick={() => setStratShowBuyPrice(prev => !prev)}
                           >
-                            {stratShowBuyPrice.has(i) ? (
+                            {stratShowBuyPrice ? (
                               <span style={{ color: TEXT_MUTED, fontWeight: 600 }}>{buyPriceFmt}</span>
                             ) : (
                               row.lastOpDate || "—"
@@ -2811,19 +2794,9 @@ const Home: NextPage = () => {
                         {/* Mobile: tap to toggle between amount and USD */}
                         <span
                           className="sm:hidden cursor-pointer"
-                          onClick={() =>
-                            setOpsShowUsd(prev => {
-                              const next = new Set(prev);
-                              if (next.has(i)) {
-                                next.delete(i);
-                              } else {
-                                next.add(i);
-                              }
-                              return next;
-                            })
-                          }
+                          onClick={() => setOpsShowUsd(prev => !prev)}
                         >
-                          {opsShowUsd.has(i) ? (
+                          {opsShowUsd ? (
                             <span style={{ color: TEXT_MUTED, fontWeight: 600 }}>{op.usdValue || "\u2014"}</span>
                           ) : (
                             <span>
