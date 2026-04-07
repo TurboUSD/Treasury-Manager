@@ -127,7 +127,7 @@ export const Header = () => {
   useOutsideClick(mobileMenuRef, () => setMobileOpen(false));
 
   return (
-    <div className="sticky top-0 z-20 w-full" style={{ background: "#000000" }}>
+    <div className="sticky top-0 z-20 w-full tusd-header" style={{ background: "#000000" }}>
       <div className="flex items-center justify-between h-14 px-6 max-w-7xl mx-auto">
         {/* Left: Logo + nav links */}
         <div className="flex items-center gap-4">
@@ -173,9 +173,8 @@ export const Header = () => {
             href="https://turbousd.com/buy"
             target="_blank"
             rel="noopener noreferrer"
-            className="hidden lg:inline-block text-xs font-semibold rounded-full px-4 py-1.5 transition-all duration-200"
+            className="hidden lg:inline-block text-xs font-semibold rounded-full px-4 py-1.5 transition-all duration-200 tusd-btn-outline"
             style={{
-              border: "1.5px solid #43e397",
               color: "#43e397",
               background: "transparent",
             }}
@@ -192,7 +191,7 @@ export const Header = () => {
           </a>
 
           {/* Divider — desktop only */}
-          <div className="hidden lg:block w-px h-5 bg-[#222]" />
+          <div className="hidden lg:block h-5 tusd-divider-line" />
 
           <RainbowKitCustomConnectButton />
           {isLocalNetwork && <FaucetButton />}
@@ -208,7 +207,7 @@ export const Header = () => {
       {mobileOpen && (
         <div
           ref={mobileMenuRef}
-          className="lg:hidden mobile-nav-tusd"
+          className="lg:hidden"
           style={{
             background: "#000",
             animation: "slideDown 0.2s ease-out",
@@ -223,7 +222,7 @@ export const Header = () => {
                   href={href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="menu-divider block py-1 text-center text-[15px] font-medium text-white hover:text-[#43e397] transition-colors"
+                  className="block py-1 text-center text-[15px] font-medium text-white hover:text-[#43e397] transition-colors"
                   onClick={() => setMobileOpen(false)}
                 >
                   {label}
@@ -232,7 +231,7 @@ export const Header = () => {
                 <Link
                   key={href}
                   href={href}
-                  className="menu-divider block py-1 text-center text-[15px] font-medium text-white hover:text-[#43e397] transition-colors"
+                  className="block py-1 text-center text-[15px] font-medium text-white hover:text-[#43e397] transition-colors"
                   onClick={() => setMobileOpen(false)}
                 >
                   {label}
@@ -262,9 +261,8 @@ export const Header = () => {
                 href="https://turbousd.com/buy"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-block text-center py-2 px-10 text-sm font-semibold rounded-full transition-all duration-200"
+                className="inline-block text-center py-2 px-10 text-sm font-semibold rounded-full transition-all duration-200 tusd-btn-outline"
                 style={{
-                  border: "1.5px solid #43e397",
                   color: "#43e397",
                   background: "transparent",
                 }}

@@ -136,16 +136,22 @@
   }
 }
 
-/* Kill all stray Tailwind-reset borders inside the mobile header menu */
-.mobile-nav-tusd,
-.mobile-nav-tusd *,
-.mobile-nav-tusd *::before,
-.mobile-nav-tusd *::after {
+/* Kill all stray Tailwind-reset borders inside the entire header */
+.tusd-header,
+.tusd-header *,
+.tusd-header *::before,
+.tusd-header *::after {
   border-color: transparent !important;
   border-width: 0 !important;
 }
-.mobile-nav-tusd .menu-divider {
-  border-bottom: 1px solid #1a1a1a !important;
+/* Re-enable only the borders we actually want */
+.tusd-header .tusd-btn-outline {
+  border: 1.5px solid #43e397 !important;
+}
+.tusd-header .tusd-divider-line {
+  border: none !important;
+  width: 1px !important;
+  background: #222 !important;
 }
 
 /* ── turbousd.com specifics ── */
