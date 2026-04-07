@@ -128,11 +128,11 @@
   text-decoration: underline;
 }
 
-/* Mobile: lighten stat card backgrounds and brighten borders */
+/* Mobile: stat cards match managed funds card style */
 @media (max-width: 639px) {
   .stat-card-mobile {
-    background: #1c1c1c !important;
-    border-color: #333 !important;
+    background: #0c0c0c !important;
+    border-color: rgba(67, 227, 151, 0.13) !important;
   }
 }
 
