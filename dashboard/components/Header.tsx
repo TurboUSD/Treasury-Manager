@@ -24,7 +24,7 @@ export const menuLinks: HeaderMenuLink[] = [
 // ── Social icons (SVG inline) ──────────────────────────────────────────────
 function IconX() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
       <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.259 5.631L18.244 2.25Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z" />
     </svg>
   );
@@ -32,7 +32,7 @@ function IconX() {
 
 function IconTelegram() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
       <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
     </svg>
   );
@@ -40,7 +40,7 @@ function IconTelegram() {
 
 function IconDexscreener() {
   return (
-    <svg width="16" height="16" viewBox="0 0 252 300" fill="currentColor">
+    <svg width="20" height="20" viewBox="0 0 252 300" fill="currentColor">
       <path d="M151.818 106.866c9.177-4.576 20.854-11.312 32.545-20.541 2.465 5.119 2.735 9.586 1.465 13.193-.9 2.542-2.596 4.753-4.826 6.512-2.415 1.901-5.431 3.285-8.765 4.033-6.326 1.425-13.712.593-20.419-3.197m1.591 46.886l12.148 7.017c-24.804 13.902-31.547 39.716-39.557 64.859-8.009-25.143-14.753-50.957-39.556-64.859l12.148-7.017a5.95 5.95 0 003.84-5.845c-1.113-23.547 5.245-33.96 13.821-40.498 3.076-2.342 6.434-3.518 9.747-3.518s6.671 1.176 9.748 3.518c8.576 6.538 14.934 16.951 13.821 40.498a5.95 5.95 0 003.84 5.845zM126 0c14.042.377 28.119 3.103 40.336 8.406 8.46 3.677 16.354 8.534 23.502 14.342 3.228 2.622 5.886 5.155 8.814 8.071 7.897.273 19.438-8.5 24.796-16.709-9.221 30.23-51.299 65.929-80.43 79.589-.012-.005-.02-.012-.029-.018-5.228-3.992-11.108-5.988-16.989-5.988s-11.76 1.996-16.988 5.988c-.009.005-.017.014-.029.018-29.132-13.66-71.209-49.359-80.43-79.589 5.357 8.209 16.898 16.982 24.795 16.709 2.929-2.915 5.587-5.449 8.814-8.071C69.31 16.94 77.204 12.083 85.664 8.406 97.882 3.103 111.959.377 126 0m-25.818 106.866c-9.176-4.576-20.854-11.312-32.544-20.541-2.465 5.119-2.735 9.586-1.466 13.193.901 2.542 2.597 4.753 4.826 6.512 2.416 1.901 5.432 3.285 8.766 4.033 6.326 1.425 13.711.593 20.418-3.197" />
       <path d="M197.167 75.016c6.436-6.495 12.107-13.684 16.667-20.099l2.316 4.359c7.456 14.917 11.33 29.774 11.33 46.494l-.016 26.532.14 13.754c.54 33.766 7.846 67.929 24.396 99.193l-34.627-27.922-24.501 39.759-25.74-24.231L126 299.604l-41.132-66.748-25.739 24.231-24.501-39.759L0 245.25c16.55-31.264 23.856-65.427 24.397-99.193l.14-13.754-.016-26.532c0-16.721 3.873-31.578 11.331-46.494l2.315-4.359c4.56 6.415 10.23 13.603 16.667 20.099l-2.01 4.175c-3.905 8.109-5.198 17.176-2.156 25.799 1.961 5.554 5.54 10.317 10.154 13.953 4.48 3.531 9.782 5.911 15.333 7.161 3.616.814 7.3 1.149 10.96 1.035-.854 4.841-1.227 9.862-1.251 14.978L53.2 160.984l25.206 14.129a41.926 41.926 0 015.734 3.869c20.781 18.658 33.275 73.855 41.861 100.816 8.587-26.961 21.08-82.158 41.862-100.816a41.865 41.865 0 015.734-3.869l25.206-14.129-32.665-18.866c-.024-5.116-.397-10.137-1.251-14.978 3.66.114 7.344-.221 10.96-1.035 5.551-1.25 10.854-3.63 15.333-7.161 4.613-3.636 8.193-8.399 10.153-13.953 3.043-8.623 1.749-17.689-2.155-25.799l-2.01-4.175z" />
     </svg>
@@ -49,7 +49,7 @@ function IconDexscreener() {
 
 function IconUniswap() {
   return (
-    <svg width="16" height="16" viewBox="0 0 1440 1440" fill="currentColor">
+    <svg width="20" height="20" viewBox="0 0 1440 1440" fill="currentColor">
       <g transform="matrix(.1 0 0 -.1 0 1440)">
         <path d="m882 14018c337-430 1016-1213 1488-1718 610-652 1135-1162 1880-1826 173-155 338-306 366-336 108-114 137-234 82-329-57-98-172-174-348-233-195-65-362-81-454-42-110 46-247 229-511 686-116 200-1153 1795-1162 1786-9-8 28-74 767-1390 180-320 272-495 291-550 52-155 58-277 18-401-12-38-23-90-26-115-5-68-54-157-139-256-187-217-255-340-329-595-43-148-65-265-109-570-49-340-100-538-198-769-153-362-355-669-838-1275-364-457-402-512-504-726-108-225-130-327-152-689-23-394 110-891 349-1305 22-38 97-160 167-270 215-338 320-545 320-629 0-74 30-76 281-21 833 185 1472 509 1803 913 148 181 185 309 181 617-2 158-16 220-71 326-91 173-239 313-594 560-348 241-519 417-625 641-70 148-89 242-89 433 0 140 3 172 26 255 36 132 101 293 235 580 276 588 331 779 378 1315 39 436 77 562 210 690 95 91 188 125 455 165 467 69 744 190 975 425 175 177 235 333 250 645l6 135-99 110c-156 175-529 520-1267 1176-1045 928-3012 2629-3040 2629-4 0 8-19 27-42z" />
         <path d="m4695 13113c-16-3-34-8-38-13-11-10 8-14 165-39 332-54 600-140 882-284 494-252 919-646 1486-1377 316-407 399-512 535-675 537-644 870-893 1445-1084 317-104 649-170 1040-206 36-3 85-8 110-10 83-8 304-23 445-30 694-37 1020-92 1267-216 235-118 385-253 550-498 39-58 75-110 80-116 22-25-32 271-78 424-112 369-357 817-639 1171-104 130-197 232-205 223-3-4-19-64-34-133-105-475-318-801-526-804-112-2-207 70-246 186-22 69-15 109 44 236 93 197 116 312 115 567 0 178-18 343-54 497-25 105-28 108-228 228-604 360-1264 565-1986 618-198 14-773 6-872-12-10-2-49-7-88-11-38-4-140-18-225-31s-168-26-185-29c-27-4-37 3-105 82-123 142-406 428-540 546-346 304-696 518-1051 642-192 67-327 96-644 140-54 7-383 14-420 8z" />
@@ -128,12 +128,9 @@ export const Header = () => {
 
   return (
     <div className="sticky top-0 z-20 w-full" style={{ background: "#000000" }}>
-      <div
-        className="flex items-center justify-between h-14 px-4 max-w-7xl mx-auto lg:grid"
-        style={{ gridTemplateColumns: "1fr auto 1fr" }}
-      >
-        {/* Logo — left column */}
-        <Link href="/" passHref className="flex items-center gap-2 shrink-0 lg:justify-self-start">
+      <div className="flex items-center justify-between h-14 px-6 max-w-7xl mx-auto">
+        {/* Logo — left */}
+        <Link href="/" passHref className="flex items-center gap-2 shrink-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="https://turbousd.com/wp-content/uploads/2025/07/TurboUSD_t.png"
@@ -146,15 +143,16 @@ export const Header = () => {
           </div>
         </Link>
 
-        {/* Desktop nav — center column */}
-        <ul className="hidden lg:flex items-center gap-1 justify-self-center">
-          <HeaderMenuLinks />
-        </ul>
+        {/* Desktop center: nav + socials + Get ₸USD — spread evenly */}
+        <div className="hidden lg:flex items-center gap-5 mx-8">
+          <ul className="flex items-center gap-1">
+            <HeaderMenuLinks />
+          </ul>
 
-        {/* Right side: socials + connect + burger — right column */}
-        <div className="flex items-center gap-3 lg:justify-self-end">
-          {/* Social icons — desktop only */}
-          <div className="hidden sm:flex items-center gap-2">
+          <div className="w-px h-5 bg-[#222]" />
+
+          {/* Social icons */}
+          <div className="flex items-center gap-2">
             {SOCIAL_LINKS.map(({ label, href, icon }) => (
               <a
                 key={label}
@@ -169,9 +167,34 @@ export const Header = () => {
             ))}
           </div>
 
-          {/* Divider — desktop only */}
-          <div className="hidden sm:block w-px h-5 bg-[#222]" />
+          <div className="w-px h-5 bg-[#222]" />
 
+          {/* Get ₸USD button */}
+          <a
+            href="https://turbousd.com/buy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-semibold rounded-full px-4 py-1.5 transition-all duration-200"
+            style={{
+              border: "1.5px solid #43e397",
+              color: "#43e397",
+              background: "transparent",
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = "#43e397";
+              e.currentTarget.style.color = "#000";
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "#43e397";
+            }}
+          >
+            Get ₸USD
+          </a>
+        </div>
+
+        {/* Right side: connect wallet + burger */}
+        <div className="flex items-center gap-3 shrink-0">
           <RainbowKitCustomConnectButton />
           {isLocalNetwork && <FaucetButton />}
 
@@ -194,7 +217,7 @@ export const Header = () => {
           }}
         >
           <style>{`@keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
-          <div className="px-6 py-5 space-y-0">
+          <div className="px-6 py-4 space-y-0">
             {menuLinks.map(({ label, href, external }) =>
               external ? (
                 <a
@@ -202,7 +225,7 @@ export const Header = () => {
                   href={href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block py-3 text-[15px] font-medium text-white hover:text-[#43e397] transition-colors"
+                  className="block py-1 text-center text-[15px] font-medium text-white hover:text-[#43e397] transition-colors"
                   style={{ borderBottom: "1px solid #1a1a1a" }}
                   onClick={() => setMobileOpen(false)}
                 >
@@ -212,7 +235,7 @@ export const Header = () => {
                 <Link
                   key={href}
                   href={href}
-                  className="block py-3 text-[15px] font-medium text-white hover:text-[#43e397] transition-colors"
+                  className="block py-1 text-center text-[15px] font-medium text-white hover:text-[#43e397] transition-colors"
                   style={{ borderBottom: "1px solid #1a1a1a" }}
                   onClick={() => setMobileOpen(false)}
                 >
@@ -221,13 +244,29 @@ export const Header = () => {
               ),
             )}
 
-            {/* Get ₸USD — green border button */}
-            <div className="pt-5 pb-4">
+            {/* Social icons — single row */}
+            <div className="flex items-center gap-5 pt-4 pb-4 justify-center">
+              {SOCIAL_LINKS.map(({ label, href, icon }) => (
+                <a
+                  key={label}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={label}
+                  className="text-white hover:text-[#43e397] transition-colors"
+                >
+                  {icon}
+                </a>
+              ))}
+            </div>
+
+            {/* Get ₸USD — green border button, auto width centered */}
+            <div className="flex justify-center pb-3">
               <a
                 href="https://turbousd.com/buy"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block text-center py-2.5 text-sm font-semibold rounded-full transition-all duration-200"
+                className="inline-block text-center py-2 px-10 text-sm font-semibold rounded-full transition-all duration-200"
                 style={{
                   border: "1.5px solid #43e397",
                   color: "#43e397",
@@ -245,25 +284,6 @@ export const Header = () => {
               >
                 Get ₸USD
               </a>
-            </div>
-
-            {/* Social icons — single row */}
-            <div
-              className="flex items-center gap-5 pt-3 pb-1 justify-center"
-              style={{ borderTop: "1px solid #1a1a1a" }}
-            >
-              {SOCIAL_LINKS.map(({ label, href, icon }) => (
-                <a
-                  key={label}
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={label}
-                  className="text-[#888] hover:text-[#43e397] transition-colors p-1.5"
-                >
-                  {icon}
-                </a>
-              ))}
             </div>
           </div>
         </div>
