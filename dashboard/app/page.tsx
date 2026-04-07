@@ -2980,11 +2980,11 @@ const Home: NextPage = () => {
                           padding: "8px 12px",
                           color: "#e8e8e8",
                           fontSize: 12,
-                          lineHeight: 1.4,
+                          lineHeight: 1.2,
                         }}
                       >
-                        <p className="font-semibold mb-1">{d.date}</p>
-                        <p className="font-bold mb-1" style={{ color: GOLD }}>
+                        <p className="font-semibold mb-0.5">{d.date}</p>
+                        <p className="font-bold mb-0.5" style={{ color: GOLD }}>
                           Total: {fmtUsd(total)}
                         </p>
                         {d.tusd > 0.01 && (
