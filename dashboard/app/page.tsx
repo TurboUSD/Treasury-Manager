@@ -211,6 +211,13 @@ const treasuryV2Abi = [
     outputs: [],
   },
   {
+    name: "burnTUSD",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "amount", type: "uint256" }],
+    outputs: [],
+  },
+  {
     name: "stakeTUSD",
     type: "function",
     stateMutability: "nonpayable",
@@ -865,7 +872,7 @@ function LegacyFeeBurnerPanel() {
 }
 
 // ── Owner Operations Panel ────────────────────────────────────────────────
-type OpType = "buyback-weth" | "buyback-usdc" | "stake" | "unstake" | "rebalance" | "buy-strategic";
+type OpType = "buyback-weth" | "buyback-usdc" | "burn" | "stake" | "unstake" | "rebalance" | "buy-strategic";
 
 function OwnerOperationsPanel() {
   const [activeOp, setActiveOp] = useState<OpType>("buyback-weth");
@@ -880,6 +887,7 @@ function OwnerOperationsPanel() {
   const opFilters: { id: OpType; label: string }[] = [
     { id: "buyback-weth", label: "Buyback (WETH)" },
     { id: "buyback-usdc", label: "Buyback (USDC)" },
+    { id: "burn", label: "Burn" },
     { id: "stake", label: "Stake" },
     { id: "unstake", label: "Unstake" },
     { id: "rebalance", label: "Rebalance" },
@@ -905,6 +913,14 @@ function OwnerOperationsPanel() {
           abi: treasuryV2Abi,
           functionName: "buybackUSDC",
           args: [parseUnits(amount, 6)],
+          chainId: base.id,
+        });
+      } else if (activeOp === "burn") {
+        writeContract({
+          address: ACTIVE_TREASURY as `0x${string}`,
+          abi: treasuryV2Abi,
+          functionName: "burnTUSD",
+          args: [parseEther(amount)],
           chainId: base.id,
         });
       } else if (activeOp === "stake") {
@@ -948,6 +964,7 @@ function OwnerOperationsPanel() {
   const amountLabel: Record<OpType, string> = {
     "buyback-weth": "WETH amount",
     "buyback-usdc": "USDC amount",
+    burn: "₸USD amount to burn",
     stake: "₸USD amount",
     unstake: "₸USD amount",
     rebalance: "Token amount (standard units)",
@@ -957,6 +974,7 @@ function OwnerOperationsPanel() {
   const amountPlaceholder: Record<OpType, string> = {
     "buyback-weth": "e.g. 0.05",
     "buyback-usdc": "e.g. 100",
+    burn: "e.g. 1000000",
     stake: "e.g. 1000000",
     unstake: "e.g. 1000000",
     rebalance: "e.g. 1",
@@ -966,6 +984,7 @@ function OwnerOperationsPanel() {
   const btnLabel: Record<OpType, string> = {
     "buyback-weth": "Buyback ₸USD with WETH",
     "buyback-usdc": "Buyback ₸USD with USDC",
+    burn: "Burn ₸USD",
     stake: "Stake ₸USD",
     unstake: "Unstake ₸USD",
     rebalance: "Rebalance Token",
@@ -3293,7 +3312,7 @@ const Home: NextPage = () => {
                       href={`https://basescan.org/address/${addr}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sm hover:underline"
+                      className="text-base hover:underline"
                       style={{ color: "#fff" }}
                     >
                       {baseName}
