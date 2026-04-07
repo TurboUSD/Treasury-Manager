@@ -123,6 +123,11 @@
   display: inline-flex !important;
 }
 
+/* Hover underline on Address component links in contracts list */
+.hide-address-avatar a:hover {
+  text-decoration: underline;
+}
+
 /* ── turbousd.com specifics ── */
 [data-theme="dark"] body {
   background-color: #000000;
