@@ -216,7 +216,7 @@ export const Header = () => {
           }}
         >
           <style>{`@keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
-          <div className="px-6 pb-4 space-y-0">
+          <div className="px-6 pb-4 space-y-0" style={{ paddingTop: 10 }}>
             {menuLinks.map(({ label, href, external }) =>
               external ? (
                 <a

@@ -723,7 +723,10 @@ const TEXT_DIM = "#888888";
 
 function StatCard({ title, value, subtitle }: { title: React.ReactNode; value: string; subtitle?: string }) {
   return (
-    <div className="rounded-xl p-3 sm:p-5" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
+    <div
+      className="rounded-xl p-3 sm:p-5 stat-card-mobile"
+      style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
+    >
       <h3
         className="text-[10px] sm:text-xs font-medium uppercase tracking-wider"
         style={{ color: TEXT_MUTED, fontWeight: 600 }}
@@ -1857,11 +1860,14 @@ function AddStrategicTokenPanel() {
 
 // ── Page ──────────────────────────────────────────────────────────────────
 const Home: NextPage = () => {
-  const [opsVisible, setOpsVisible] = useState(10);
+  const [opsPage, setOpsPage] = useState(1);
+  const [opsPerPage, setOpsPerPage] = useState(10);
   const [opsFilter, setOpsFilter] = useState<string>("all");
   const [opsShowUsd, setOpsShowUsd] = useState(false);
   const [stratShowUsd, setStratShowUsd] = useState(false);
   const [stratShowBuyPrice, setStratShowBuyPrice] = useState(false);
+  const [stratPage, setStratPage] = useState(1);
+  const [stratPerPage, setStratPerPage] = useState(10);
   // Sort state: column + direction. null = default (date desc = newest first)
   const [opsSort, setOpsSort] = useState<{ col: "date" | "amount" | "usd"; dir: "asc" | "desc" } | null>(null);
   // Strategic table sort state
@@ -2414,9 +2420,24 @@ const Home: NextPage = () => {
 
   // ── Chart data: on-chain Transfer events → stacked daily snapshots ──
   // Historical snapshots are fetched once (async), "Today" is appended reactively from live balances.
-  type DailySnapshot = { date: string; tusd: number; weth: number; usdc: number; strategic: number };
+  type DailySnapshot = {
+    date: string;
+    dateRaw?: string;
+    tusd: number;
+    weth: number;
+    usdc: number;
+    strategic: number;
+    [key: `strat_${string}`]: number;
+  };
   const [historicalSnapshots, setHistoricalSnapshots] = useState<DailySnapshot[]>([]);
   const [historyFetched, setHistoryFetched] = useState(false);
+
+  // Reverse lookup: token address → ticker (needed by chart snapshot builder)
+  const tokenToTicker = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const p of STRATEGIC_PRESETS) m[p.token.toLowerCase()] = p.ticker;
+    return m;
+  }, []);
 
   // Fetch historical transfer events only once (or when prices/client change)
   useEffect(() => {
@@ -2514,6 +2535,7 @@ const Home: NextPage = () => {
             weth = 0,
             usdc = 0,
             strategic = 0;
+          const perToken: Record<string, number> = {};
           for (const [addr, bal] of Object.entries(bals)) {
             const info = tokenInfo[addr];
             if (!info) continue;
@@ -2521,9 +2543,14 @@ const Home: NextPage = () => {
             if (info.cat === "tusd") tusd += b * tusdPriceUsd;
             else if (info.cat === "weth") weth += b * wethPriceUsd;
             else if (info.cat === "usdc") usdc += b;
-            else if (info.cat === "strategic") strategic += b * (strategicPriceMap[addr] || 0);
+            else if (info.cat === "strategic") {
+              const usd = b * (strategicPriceMap[addr] || 0);
+              strategic += usd;
+              const ticker = tokenToTicker[addr] || addr.slice(0, 6);
+              perToken[`strat_${ticker}`] = (perToken[`strat_${ticker}`] || 0) + usd;
+            }
           }
-          return { date: d.slice(5), tusd, weth, usdc, strategic };
+          return { date: d.slice(5), dateRaw: d, tusd, weth, usdc, strategic, ...perToken } as DailySnapshot;
         });
 
         if (!cancelled) {
@@ -2547,23 +2574,72 @@ const Home: NextPage = () => {
   // Combine historical snapshots with live "Today" data reactively
   // This ensures "Today" always reflects current balances regardless of async fetch timing
   const chartData = useMemo(() => {
+    const perToken: Record<string, number> = {};
+    for (const r of strategicRows) {
+      perToken[`strat_${r.preset.ticker}`] = r.valueUsd;
+    }
     const today: DailySnapshot = {
       date: "Today",
       tusd: tusdBalUsd,
       weth: wethBalUsd,
       usdc: usdcBalUsd,
       strategic: strategicTotalUsd,
-    };
+      ...perToken,
+    } as DailySnapshot;
     if (!historyFetched) return [];
     return [...historicalSnapshots, today];
-  }, [historicalSnapshots, historyFetched, tusdBalUsd, wethBalUsd, usdcBalUsd, strategicTotalUsd]);
+  }, [historicalSnapshots, historyFetched, tusdBalUsd, wethBalUsd, usdcBalUsd, strategicTotalUsd, strategicRows]);
 
-  // Reverse lookup: token address → ticker
-  const tokenToTicker = useMemo(() => {
-    const m: Record<string, string> = {};
-    for (const p of STRATEGIC_PRESETS) m[p.token.toLowerCase()] = p.ticker;
-    return m;
-  }, []);
+  // ── Chart controls ───────────────────────────────────────────────────────
+  const [chartView, setChartView] = useState<"all" | "strategic">("all");
+  const [chartRange, setChartRange] = useState<"7d" | "30d" | "max">("max");
+  const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
+
+  const STRAT_COLORS: Record<string, string> = {
+    BNKR: "#f97316",
+    DRB: "#ef4444",
+    Clanker: "#06b6d4",
+    KELLY: "#eab308",
+    CLAWD: "#ec4899",
+    JUNO: "#8b5cf6",
+    FELIX: "#10b981",
+  };
+
+  const toggleSeries = (key: string) => {
+    setHiddenSeries(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  // Filter chart data by time range
+  const filteredChartData = useMemo(() => {
+    if (chartRange === "max" || chartData.length === 0) return chartData;
+    const days = chartRange === "7d" ? 7 : 30;
+    // Keep last N entries + "Today"
+    const total = chartData.length;
+    const start = Math.max(0, total - days - 1);
+    return chartData.slice(start);
+  }, [chartData, chartRange]);
+
+  // Legend items based on view mode
+  const chartLegendItems = useMemo(() => {
+    if (chartView === "all") {
+      return [
+        { key: "tusd", label: "₸USD", color: "#43e397" },
+        { key: "weth", label: "WETH", color: "#627eea" },
+        { key: "usdc", label: "USDC", color: "#2775ca" },
+        { key: "strategic", label: "Strategic", color: "#a78bfa" },
+      ];
+    }
+    return STRATEGIC_PRESETS.map(p => ({
+      key: `strat_${p.ticker}`,
+      label: p.ticker,
+      color: STRAT_COLORS[p.ticker] || "#a78bfa",
+    }));
+  }, [chartView]);
 
   const filteredOps = useMemo(() => {
     const allOps: Operation[] = HISTORICAL_OPS_RAW.map(op => {
@@ -2716,17 +2792,19 @@ const Home: NextPage = () => {
       </div>
 
       {/* Hero: Managed Funds */}
-      <div
-        className="rounded-2xl p-8 mb-8 mx-4 max-w-2xl w-full text-center"
-        style={{ background: CARD_BG, border: `1px solid ${GOLD}22` }}
-      >
-        <p className="text-xs uppercase tracking-widest mb-2" style={{ color: GOLD }}>
-          Managed Funds
-        </p>
-        <p className="text-5xl font-bold text-white mt-2">{fmtUsd(totalManagedUsd)}</p>
-        <p className="text-xs mt-3" style={{ color: TEXT_DIM }}>
-          Total USD value of all tokens held in the Treasury contract
-        </p>
+      <div className="max-w-4xl w-full px-4 mb-8">
+        <div
+          className="rounded-2xl p-8 max-w-2xl w-full text-center mx-auto"
+          style={{ background: CARD_BG, border: `1px solid ${GOLD}22` }}
+        >
+          <p className="text-xs uppercase tracking-widest mb-2" style={{ color: GOLD }}>
+            Managed Funds
+          </p>
+          <p className="text-5xl font-bold text-white mt-2">{fmtUsd(totalManagedUsd)}</p>
+          <p className="text-xs mt-3" style={{ color: TEXT_DIM }}>
+            Total USD value of all tokens held in the Treasury contract
+          </p>
+        </div>
       </div>
 
       {/* Main Stats Row */}
@@ -2841,7 +2919,7 @@ const Home: NextPage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedStrategicRows.map(row => {
+                  {sortedStrategicRows.slice((stratPage - 1) * stratPerPage, stratPage * stratPerPage).map(row => {
                     const roiColor = row.roi === null ? TEXT_DIM : row.roi >= 0 ? "#43e397" : "#ff6b6b";
                     const roiLabel = row.roi === null ? "—" : `${row.roi >= 0 ? "+" : ""}${row.roi.toFixed(0)}%`;
                     const buyPriceFmt =
@@ -2912,6 +2990,57 @@ const Home: NextPage = () => {
                 </tbody>
               </table>
             </div>
+            {sortedStrategicRows.length > 0 &&
+              (() => {
+                const totalPages = Math.ceil(sortedStrategicRows.length / stratPerPage);
+                return totalPages > 1 ? (
+                  <div
+                    className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
+                    style={{ borderTop: `1px solid ${CARD_BORDER}` }}
+                  >
+                    <div className="flex items-center gap-1 text-xs" style={{ color: TEXT_DIM }}>
+                      <span>Show</span>
+                      {[10, 25, 50].map(n => (
+                        <button
+                          key={n}
+                          onClick={() => {
+                            setStratPerPage(n);
+                            setStratPage(1);
+                          }}
+                          className="px-1.5 py-0.5 rounded"
+                          style={{
+                            color: stratPerPage === n ? "#fff" : TEXT_MUTED,
+                            background: stratPerPage === n ? "#ffffff15" : "transparent",
+                          }}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs" style={{ color: TEXT_MUTED }}>
+                      <span>
+                        Page {stratPage} of {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setStratPage(p => Math.max(1, p - 1))}
+                        disabled={stratPage <= 1}
+                        className="px-2 py-0.5 rounded"
+                        style={{ color: stratPage <= 1 ? TEXT_DIM : "#fff", background: "#ffffff10" }}
+                      >
+                        ‹
+                      </button>
+                      <button
+                        onClick={() => setStratPage(p => Math.min(totalPages, p + 1))}
+                        disabled={stratPage >= totalPages}
+                        className="px-2 py-0.5 rounded"
+                        style={{ color: stratPage >= totalPages ? TEXT_DIM : "#fff", background: "#ffffff10" }}
+                      >
+                        ›
+                      </button>
+                    </div>
+                  </div>
+                ) : null;
+              })()}
             <p className="sm:hidden px-4 pb-3 text-[10px]" style={{ color: TEXT_DIM }}>
               Tap amount to see USD value and Entry for purchase price
             </p>
@@ -2923,41 +3052,82 @@ const Home: NextPage = () => {
       <div className="max-w-4xl w-full px-4 mb-8">
         <SectionTitle>Treasury Composition Over Time</SectionTitle>
         <div className="rounded-xl p-6" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
-          {/* Legend */}
-          <div className="flex flex-wrap gap-4 mb-4 text-xs">
-            {[
-              { label: "₸USD", color: "#43e397" },
-              { label: "WETH", color: "#627eea" },
-              { label: "USDC", color: "#2775ca" },
-              { label: "Strategic", color: "#a78bfa" },
-            ].map(({ label, color }) => (
-              <div key={label} className="flex items-center gap-1.5">
-                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
-                <span style={{ color: TEXT_MUTED }}>{label}</span>
-              </div>
-            ))}
+          {/* Top controls: view toggle left, time range right */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            {/* View toggle */}
+            <div className="flex gap-1">
+              {(["all", "strategic"] as const).map(v => (
+                <button
+                  key={v}
+                  onClick={() => {
+                    setChartView(v);
+                    setHiddenSeries(new Set());
+                  }}
+                  className="px-3 py-1 text-xs font-medium rounded-full transition-colors"
+                  style={{
+                    background: chartView === v ? "#43e39720" : "transparent",
+                    color: chartView === v ? "#43e397" : TEXT_MUTED,
+                    border: `1px solid ${chartView === v ? "#43e397" : "#333"}`,
+                  }}
+                >
+                  {v === "all" ? "All Assets" : "Strategic Tokens"}
+                </button>
+              ))}
+            </div>
+            {/* Time range */}
+            <div className="flex gap-1">
+              {(["7d", "30d", "max"] as const).map(r => (
+                <button
+                  key={r}
+                  onClick={() => setChartRange(r)}
+                  className="px-2.5 py-1 text-xs font-medium rounded-full transition-colors"
+                  style={{
+                    background: chartRange === r ? "#ffffff10" : "transparent",
+                    color: chartRange === r ? "#fff" : TEXT_MUTED,
+                    border: `1px solid ${chartRange === r ? "#555" : "#333"}`,
+                  }}
+                >
+                  {r === "max" ? "Max" : r.toUpperCase()}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {chartData.length > 0 ? (
+          {/* Clickable legend */}
+          <div className="flex flex-wrap gap-4 mb-4 text-xs">
+            {chartLegendItems.map(({ key, label, color }) => {
+              const hidden = hiddenSeries.has(key);
+              return (
+                <button
+                  key={key}
+                  onClick={() => toggleSeries(key)}
+                  className="flex items-center gap-1.5 transition-opacity"
+                  style={{ opacity: hidden ? 0.35 : 1 }}
+                >
+                  <span
+                    className="inline-block w-2.5 h-2.5 rounded-sm"
+                    style={{ background: hidden ? "#555" : color }}
+                  />
+                  <span
+                    style={{ color: hidden ? TEXT_DIM : TEXT_MUTED, textDecoration: hidden ? "line-through" : "none" }}
+                  >
+                    {label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {filteredChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={chartData}>
+              <AreaChart data={filteredChartData}>
                 <defs>
-                  <linearGradient id="gTusd" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#43e397" stopOpacity={0.5} />
-                    <stop offset="95%" stopColor="#43e397" stopOpacity={0.05} />
-                  </linearGradient>
-                  <linearGradient id="gWeth" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#627eea" stopOpacity={0.5} />
-                    <stop offset="95%" stopColor="#627eea" stopOpacity={0.05} />
-                  </linearGradient>
-                  <linearGradient id="gUsdc" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#2775ca" stopOpacity={0.5} />
-                    <stop offset="95%" stopColor="#2775ca" stopOpacity={0.05} />
-                  </linearGradient>
-                  <linearGradient id="gStrat" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#a78bfa" stopOpacity={0.5} />
-                    <stop offset="95%" stopColor="#a78bfa" stopOpacity={0.05} />
-                  </linearGradient>
+                  {chartLegendItems.map(({ key, color }) => (
+                    <linearGradient key={key} id={`g_${key}`} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={color} stopOpacity={0.5} />
+                      <stop offset="95%" stopColor={color} stopOpacity={0.05} />
+                    </linearGradient>
+                  ))}
                 </defs>
                 <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#a6a6a6" }} stroke="#1c1c1c" />
                 <YAxis
@@ -2970,7 +3140,11 @@ const Home: NextPage = () => {
                   content={({ active, payload }) => {
                     if (!active || !payload || !payload.length) return null;
                     const d = payload[0]?.payload as DailySnapshot;
-                    const total = (d.tusd || 0) + (d.weth || 0) + (d.usdc || 0) + (d.strategic || 0);
+                    const visibleItems = chartLegendItems.filter(i => !hiddenSeries.has(i.key));
+                    const total = visibleItems.reduce(
+                      (s, i) => s + ((d[i.key as keyof DailySnapshot] as number) || 0),
+                      0,
+                    );
                     return (
                       <div
                         style={{
@@ -2980,69 +3154,38 @@ const Home: NextPage = () => {
                           padding: "8px 12px",
                           color: "#e8e8e8",
                           fontSize: 12,
-                          lineHeight: 1.2,
+                          lineHeight: 1.1,
                         }}
                       >
-                        <p className="font-semibold mb-0.5">{d.date}</p>
-                        <p className="font-bold mb-0.5" style={{ color: GOLD }}>
+                        <div className="font-semibold">{d.date}</div>
+                        <div className="font-bold" style={{ color: GOLD }}>
                           Total: {fmtUsd(total)}
-                        </p>
-                        {d.tusd > 0.01 && (
-                          <p>
-                            <span style={{ color: "#43e397" }}>₸USD:</span> {fmtUsd(d.tusd)}
-                          </p>
-                        )}
-                        {d.weth > 0.01 && (
-                          <p>
-                            <span style={{ color: "#627eea" }}>WETH:</span> {fmtUsd(d.weth)}
-                          </p>
-                        )}
-                        {d.usdc > 0.01 && (
-                          <p>
-                            <span style={{ color: "#2775ca" }}>USDC:</span> {fmtUsd(d.usdc)}
-                          </p>
-                        )}
-                        {d.strategic > 0.01 && (
-                          <p>
-                            <span style={{ color: "#a78bfa" }}>Strategic:</span> {fmtUsd(d.strategic)}
-                          </p>
-                        )}
+                        </div>
+                        {visibleItems.map(({ key, label, color }) => {
+                          const val = (d[key as keyof DailySnapshot] as number) || 0;
+                          return val > 0.01 ? (
+                            <div key={key}>
+                              <span style={{ color }}>{label}:</span> {fmtUsd(val)}
+                            </div>
+                          ) : null;
+                        })}
                       </div>
                     );
                   }}
                 />
-                <Area
-                  type="monotone"
-                  dataKey="tusd"
-                  stackId="1"
-                  stroke="#43e397"
-                  fill="url(#gTusd)"
-                  strokeWidth={1.5}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="weth"
-                  stackId="1"
-                  stroke="#627eea"
-                  fill="url(#gWeth)"
-                  strokeWidth={1.5}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="usdc"
-                  stackId="1"
-                  stroke="#2775ca"
-                  fill="url(#gUsdc)"
-                  strokeWidth={1.5}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="strategic"
-                  stackId="1"
-                  stroke="#a78bfa"
-                  fill="url(#gStrat)"
-                  strokeWidth={1.5}
-                />
+                {chartLegendItems
+                  .filter(i => !hiddenSeries.has(i.key))
+                  .map(({ key, color }) => (
+                    <Area
+                      key={key}
+                      type="monotone"
+                      dataKey={key}
+                      stackId="1"
+                      stroke={color}
+                      fill={`url(#g_${key})`}
+                      strokeWidth={1.5}
+                    />
+                  ))}
               </AreaChart>
             </ResponsiveContainer>
           ) : (
@@ -3106,7 +3249,10 @@ const Home: NextPage = () => {
             {["all", "buyback", "burn", "rebalance", "stake", "burnengine", "strategicbuy", "strategicsell"].map(f => (
               <button
                 key={f}
-                onClick={() => setOpsFilter(f)}
+                onClick={() => {
+                  setOpsFilter(f);
+                  setOpsPage(1);
+                }}
                 className="btn btn-xs sm:btn-sm shrink-0"
                 style={{
                   background: opsFilter === f ? GOLD : "transparent",
@@ -3176,7 +3322,7 @@ const Home: NextPage = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredOps.slice(0, opsVisible).map((op, i) => (
+                  filteredOps.slice((opsPage - 1) * opsPerPage, opsPage * opsPerPage).map((op, i) => (
                     <tr key={i} style={{ borderBottom: `1px solid #111` }}>
                       <td>
                         <span
@@ -3251,17 +3397,57 @@ const Home: NextPage = () => {
             </table>
           </div>
 
-          {filteredOps.length > opsVisible && (
-            <div className="p-4 text-center" style={{ borderTop: `1px solid ${CARD_BORDER}` }}>
-              <button
-                className="btn btn-sm btn-ghost text-sm"
-                style={{ color: TEXT_MUTED, fontWeight: 600 }}
-                onClick={() => setOpsVisible(v => v + 10)}
-              >
-                Load more
-              </button>
-            </div>
-          )}
+          {filteredOps.length > 0 &&
+            (() => {
+              const totalPages = Math.ceil(filteredOps.length / opsPerPage);
+              return (
+                <div
+                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
+                  style={{ borderTop: `1px solid ${CARD_BORDER}` }}
+                >
+                  <div className="flex items-center gap-1 text-xs" style={{ color: TEXT_DIM }}>
+                    <span>Show</span>
+                    {[10, 25, 50, 100].map(n => (
+                      <button
+                        key={n}
+                        onClick={() => {
+                          setOpsPerPage(n);
+                          setOpsPage(1);
+                        }}
+                        className="px-1.5 py-0.5 rounded"
+                        style={{
+                          color: opsPerPage === n ? "#fff" : TEXT_MUTED,
+                          background: opsPerPage === n ? "#ffffff15" : "transparent",
+                        }}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs" style={{ color: TEXT_MUTED }}>
+                    <span>
+                      Page {opsPage} of {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setOpsPage(p => Math.max(1, p - 1))}
+                      disabled={opsPage <= 1}
+                      className="px-2 py-0.5 rounded"
+                      style={{ color: opsPage <= 1 ? TEXT_DIM : "#fff", background: "#ffffff10" }}
+                    >
+                      ‹
+                    </button>
+                    <button
+                      onClick={() => setOpsPage(p => Math.min(totalPages, p + 1))}
+                      disabled={opsPage >= totalPages}
+                      className="px-2 py-0.5 rounded"
+                      style={{ color: opsPage >= totalPages ? TEXT_DIM : "#fff", background: "#ffffff10" }}
+                    >
+                      ›
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           <p className="sm:hidden px-4 pb-3 text-[10px]" style={{ color: TEXT_DIM }}>
             Tap amount to see USD value
           </p>

@@ -128,6 +128,14 @@
   text-decoration: underline;
 }
 
+/* Mobile: lighten stat card backgrounds and brighten borders */
+@media (max-width: 639px) {
+  .stat-card-mobile {
+    background: #1c1c1c !important;
+    border-color: #333 !important;
+  }
+}
+
 /* ── turbousd.com specifics ── */
 [data-theme="dark"] body {
   background-color: #000000;
