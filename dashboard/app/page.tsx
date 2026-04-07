@@ -678,9 +678,9 @@ function fmtUsdShort(n: number): string {
 }
 
 function fmtBig(n: number): string {
-  if (n >= 1_000_000_000) return `${Math.round(n / 1_000_000_000)}B`;
-  if (n >= 1_000_000) return `${Math.round(n / 1_000_000)}M`;
-  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(2)}K`;
   return Math.round(n).toString();
 }
 
@@ -690,9 +690,9 @@ function compactAmount(s: string): string {
   if (!m) return s;
   const num = Number(m[1].replace(/,/g, ""));
   const suffix = m[2];
-  if (num >= 1_000_000_000) return `${Math.round(num / 1_000_000_000)}B ${suffix}`.trim();
-  if (num >= 1_000_000) return `${Math.round(num / 1_000_000)}M ${suffix}`.trim();
-  if (num >= 1_000) return `${Math.round(num / 1_000)}K ${suffix}`.trim();
+  if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(2)}B ${suffix}`.trim();
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(2)}M ${suffix}`.trim();
+  if (num >= 1_000) return `${(num / 1_000).toFixed(2)}K ${suffix}`.trim();
   return s;
 }
 
@@ -2744,12 +2744,12 @@ const Home: NextPage = () => {
           />
           <StatCard
             title="WETH Balance"
-            value={wethBalNum > 0 ? `${wethBalNum.toFixed(4)} WETH` : "0 WETH"}
+            value={wethBalNum > 0 ? `${wethBalNum.toFixed(2)} WETH` : "0 WETH"}
             subtitle={wethBalUsd > 0 ? fmtUsd(wethBalUsd) : "\u2014"}
           />
           <StatCard
             title="USDC Balance"
-            value={usdcBalNum > 0 ? `${fmtBig(usdcBalNum)} USDC` : "0 USDC"}
+            value={usdcBalNum > 0 ? `${usdcBalNum < 1000 ? usdcBalNum.toFixed(2) : fmtBig(usdcBalNum)} USDC` : "0 USDC"}
             subtitle={usdcBalUsd > 0 ? fmtUsd(usdcBalUsd) : "\u2014"}
           />
           <StatCard title="Strategic Portfolio" value={fmtUsd(strategicTotalUsd)} subtitle="(Combined token value)" />
@@ -2827,7 +2827,7 @@ const Home: NextPage = () => {
                     const roiLabel = row.roi === null ? "—" : `${row.roi >= 0 ? "+" : ""}${row.roi.toFixed(0)}%`;
                     const buyPriceFmt =
                       row.computedBuyPrice > 0
-                        ? `$${row.computedBuyPrice.toFixed(row.computedBuyPrice >= 1 ? 2 : 8).replace(/\.?0+$/, "")}`
+                        ? `$${row.computedBuyPrice.toFixed(row.computedBuyPrice >= 1 ? 2 : 5).replace(/\.?0+$/, "")}`
                         : "—";
                     return (
                       <tr key={row.preset.ticker} style={{ borderBottom: `1px solid #111` }}>
@@ -3307,18 +3307,18 @@ const Home: NextPage = () => {
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
                         fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth="1.5"
                         stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        style={{ color: "#fff" }}
+                        className="h-[18px] w-[18px]"
+                        style={{ color: "#a6a6a6" }}
                       >
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75"
+                        />
                       </svg>
                     </button>
                   </span>
