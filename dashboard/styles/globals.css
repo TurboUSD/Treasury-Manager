@@ -115,6 +115,14 @@
   display: none !important;
 }
 
+/* Hide address text but keep copy icon button (for ENS name rows) */
+.hide-address-text span {
+  display: none !important;
+}
+.hide-address-text button {
+  display: inline-flex !important;
+}
+
 /* ── turbousd.com specifics ── */
 [data-theme="dark"] body {
   background-color: #000000;
