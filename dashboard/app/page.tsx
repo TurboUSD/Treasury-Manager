@@ -2592,7 +2592,8 @@ const Home: NextPage = () => {
 
   // ── Chart controls ───────────────────────────────────────────────────────
   const [chartView, setChartView] = useState<"all" | "strategic">("all");
-  const [chartRange, setChartRange] = useState<"7d" | "30d" | "max">("max");
+  const [chartRange, setChartRange] = useState<"30d" | "max">("max");
+  const [chartRangeOpen, setChartRangeOpen] = useState(false);
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
 
   const STRAT_COLORS: Record<string, string> = {
@@ -2617,7 +2618,7 @@ const Home: NextPage = () => {
   // Filter chart data by time range
   const filteredChartData = useMemo(() => {
     if (chartRange === "max" || chartData.length === 0) return chartData;
-    const days = chartRange === "7d" ? 7 : 30;
+    const days = 30;
     // Keep last N entries + "Today"
     const total = chartData.length;
     const start = Math.max(0, total - days - 1);
@@ -2634,12 +2635,14 @@ const Home: NextPage = () => {
         { key: "strategic", label: "Strategic", color: "#a78bfa" },
       ];
     }
-    return STRATEGIC_PRESETS.map(p => ({
-      key: `strat_${p.ticker}`,
-      label: p.ticker,
-      color: STRAT_COLORS[p.ticker] || "#a78bfa",
-    }));
-  }, [chartView]);
+    return STRATEGIC_PRESETS.filter(p => strategicRows.some(r => r.preset.ticker === p.ticker && r.balance > 0)).map(
+      p => ({
+        key: `strat_${p.ticker}`,
+        label: p.ticker,
+        color: STRAT_COLORS[p.ticker] || "#a78bfa",
+      }),
+    );
+  }, [chartView, strategicRows]);
 
   const filteredOps = useMemo(() => {
     const allOps: Operation[] = HISTORICAL_OPS_RAW.map(op => {
@@ -3074,22 +3077,58 @@ const Home: NextPage = () => {
                 </button>
               ))}
             </div>
-            {/* Time range */}
-            <div className="flex gap-1">
-              {(["7d", "30d", "max"] as const).map(r => (
-                <button
-                  key={r}
-                  onClick={() => setChartRange(r)}
-                  className="px-2.5 py-1 text-xs font-medium rounded-full transition-colors"
+            {/* Time range dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setChartRangeOpen(prev => !prev)}
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full transition-colors"
+                style={{
+                  background: "#ffffff10",
+                  color: "#fff",
+                  border: "1px solid #555",
+                }}
+              >
+                {chartRange === "max" ? "Max" : "30D"}
+                <svg
+                  width="10"
+                  height="10"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
                   style={{
-                    background: chartRange === r ? "#ffffff10" : "transparent",
-                    color: chartRange === r ? "#fff" : TEXT_MUTED,
-                    border: `1px solid ${chartRange === r ? "#555" : "#333"}`,
+                    transform: chartRangeOpen ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.15s",
                   }}
                 >
-                  {r === "max" ? "Max" : r.toUpperCase()}
-                </button>
-              ))}
+                  <path
+                    fillRule="evenodd"
+                    d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
+              {chartRangeOpen && (
+                <div
+                  className="absolute right-0 mt-1 rounded-lg overflow-hidden z-10"
+                  style={{ background: "#1c1c1c", border: "1px solid #333", minWidth: 70 }}
+                >
+                  {(["30d", "max"] as const).map(r => (
+                    <button
+                      key={r}
+                      onClick={() => {
+                        setChartRange(r);
+                        setChartRangeOpen(false);
+                      }}
+                      className="block w-full text-left px-3 py-1.5 text-xs font-medium transition-colors"
+                      style={{
+                        background: chartRange === r ? "#ffffff10" : "transparent",
+                        color: chartRange === r ? "#fff" : TEXT_MUTED,
+                      }}
+                    >
+                      {r === "max" ? "Max" : "30D"}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

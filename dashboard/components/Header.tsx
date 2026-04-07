@@ -208,10 +208,9 @@ export const Header = () => {
       {mobileOpen && (
         <div
           ref={mobileMenuRef}
-          className="lg:hidden"
+          className="lg:hidden mobile-nav-tusd"
           style={{
             background: "#000",
-            borderTop: "1px solid #1a1a1a",
             animation: "slideDown 0.2s ease-out",
           }}
         >
@@ -224,8 +223,7 @@ export const Header = () => {
                   href={href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block py-1 text-center text-[15px] font-medium text-white hover:text-[#43e397] transition-colors"
-                  style={{ border: "none", borderBottom: "1px solid #1a1a1a" }}
+                  className="menu-divider block py-1 text-center text-[15px] font-medium text-white hover:text-[#43e397] transition-colors"
                   onClick={() => setMobileOpen(false)}
                 >
                   {label}
@@ -234,8 +232,7 @@ export const Header = () => {
                 <Link
                   key={href}
                   href={href}
-                  className="block py-1 text-center text-[15px] font-medium text-white hover:text-[#43e397] transition-colors"
-                  style={{ border: "none", borderBottom: "1px solid #1a1a1a" }}
+                  className="menu-divider block py-1 text-center text-[15px] font-medium text-white hover:text-[#43e397] transition-colors"
                   onClick={() => setMobileOpen(false)}
                 >
                   {label}

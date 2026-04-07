@@ -136,6 +136,18 @@
   }
 }
 
+/* Kill all stray Tailwind-reset borders inside the mobile header menu */
+.mobile-nav-tusd,
+.mobile-nav-tusd *,
+.mobile-nav-tusd *::before,
+.mobile-nav-tusd *::after {
+  border-color: transparent !important;
+  border-width: 0 !important;
+}
+.mobile-nav-tusd .menu-divider {
+  border-bottom: 1px solid #1a1a1a !important;
+}
+
 /* ── turbousd.com specifics ── */
 [data-theme="dark"] body {
   background-color: #000000;
