@@ -254,6 +254,57 @@ const treasuryV2Abi = [
     ],
     outputs: [],
   },
+  {
+    name: "setCoreOperatorLimits",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "_buybackWethPerAction", type: "uint256" },
+      { name: "_buybackWethPerDay", type: "uint256" },
+      { name: "_buybackUsdcPerAction", type: "uint256" },
+      { name: "_buybackUsdcPerDay", type: "uint256" },
+      { name: "_burnTusdPerAction", type: "uint256" },
+      { name: "_burnTusdPerDay", type: "uint256" },
+      { name: "_stakeTusdPerAction", type: "uint256" },
+      { name: "_stakeTusdPerDay", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "setOperatorConfig",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "_cooldown", type: "uint256" },
+      { name: "_slippageBps", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "setRebalanceLimits",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "_perAction", type: "uint256" },
+      { name: "_perDay", type: "uint256" },
+    ],
+    outputs: [],
+  },
+  // State variable readers for current limits
+  { name: "buybackWethPerAction", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { name: "buybackWethPerDay", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { name: "buybackUsdcPerAction", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { name: "buybackUsdcPerDay", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { name: "burnTusdPerAction", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { name: "burnTusdPerDay", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { name: "stakeTusdPerAction", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { name: "stakeTusdPerDay", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { name: "operatorCooldown", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { name: "operatorSlippageBps", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { name: "rebalanceWethPerAction", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { name: "rebalanceWethPerDay", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { name: "buyStrategicWethPerAction", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { name: "buyStrategicWethPerDay", type: "function", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
 ] as const;
 
 // ── Strategic Token Presets ──────────────────────────────────────────────
@@ -530,6 +581,12 @@ function fmtUsd(n: number): string {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/** USD without decimals unless value < 10 (then 2 decimals) */
+function fmtUsdShort(n: number): string {
+  if (n < 10) return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `$${Math.round(n).toLocaleString("en-US")}`;
+}
+
 function fmtBig(n: number): string {
   if (n >= 1_000_000_000) return `${Math.round(n / 1_000_000_000)}B`;
   if (n >= 1_000_000) return `${Math.round(n / 1_000_000)}M`;
@@ -591,6 +648,37 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
     <h2 className="text-sm font-semibold mb-4 uppercase tracking-widest" style={{ color: GOLD }}>
       {children}
     </h2>
+  );
+}
+
+function CollapsibleSection({ title, children }: { title: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="max-w-4xl w-full px-4 mb-8">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center justify-between w-full mb-4"
+      >
+        <h2 className="text-sm font-semibold uppercase tracking-widest" style={{ color: GOLD }}>
+          {title}
+        </h2>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={GOLD}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {open && children}
+    </div>
   );
 }
 
@@ -963,6 +1051,246 @@ function OwnerOperationsPanel() {
   );
 }
 
+// ── Operator Limits Panel ────────────────────────────────────────────────
+function OperatorLimitsPanel() {
+  const { writeContract, data: txHash, isPending, error: writeError, reset } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+
+  // Read current limits
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const r = (fn: any) => useReadContract({ address: ACTIVE_TREASURY as `0x${string}`, abi: treasuryV2Abi, functionName: fn, chainId: base.id, query: { staleTime: STALE_SLOW } });
+  const { data: curBuybackWethPA } = r("buybackWethPerAction");
+  const { data: curBuybackWethPD } = r("buybackWethPerDay");
+  const { data: curBuybackUsdcPA } = r("buybackUsdcPerAction");
+  const { data: curBuybackUsdcPD } = r("buybackUsdcPerDay");
+  const { data: curBurnTusdPA } = r("burnTusdPerAction");
+  const { data: curBurnTusdPD } = r("burnTusdPerDay");
+  const { data: curStakeTusdPA } = r("stakeTusdPerAction");
+  const { data: curStakeTusdPD } = r("stakeTusdPerDay");
+  const { data: curCooldown } = r("operatorCooldown");
+  const { data: curSlippage } = r("operatorSlippageBps");
+  const { data: curRebalancePA } = r("rebalanceWethPerAction");
+  const { data: curRebalancePD } = r("rebalanceWethPerDay");
+  const { data: curBuyStratPA } = r("buyStrategicWethPerAction");
+  const { data: curBuyStratPD } = r("buyStrategicWethPerDay");
+
+  const toEth = (v: bigint | undefined, dec = 18) => v ? Number(v) / 10 ** dec : 0;
+  const toSec = (v: bigint | undefined) => v ? Number(v) : 0;
+
+  // Form state — all in human units
+  const [buybackWethPA, setBuybackWethPA] = useState("");
+  const [buybackWethPD, setBuybackWethPD] = useState("");
+  const [buybackUsdcPA, setBuybackUsdcPA] = useState("");
+  const [buybackUsdcPD, setBuybackUsdcPD] = useState("");
+  const [burnTusdPA, setBurnTusdPA] = useState("");
+  const [burnTusdPD, setBurnTusdPD] = useState("");
+  const [stakeTusdPA, setStakeTusdPA] = useState("");
+  const [stakeTusdPD, setStakeTusdPD] = useState("");
+  const [cooldownMin, setCooldownMin] = useState("");
+  const [slippageBps, setSlippageBps] = useState("");
+  const [rebalancePA, setRebalancePA] = useState("");
+  const [rebalancePD, setRebalancePD] = useState("");
+  const [buyStratPA, setBuyStratPA] = useState("");
+  const [buyStratPD, setBuyStratPD] = useState("");
+
+  const [activeTab, setActiveTab] = useState<"core" | "config" | "rebalance" | "strategic">("core");
+
+  const inputStyle = { background: "#0a0a0a", color: "#e8e8e8", border: "1px solid #2a2a2a" };
+  const labelStyle = { color: TEXT_MUTED, fontWeight: 600 } as const;
+
+  const LimitInput = ({ label, value, onChange, current, unit }: { label: string; value: string; onChange: (v: string) => void; current: string; unit: string }) => (
+    <div>
+      <label className="text-xs mb-1 block" style={labelStyle}>{label}</label>
+      <input
+        className="w-full rounded-lg px-3 py-2 text-sm font-mono"
+        style={inputStyle}
+        type="text"
+        placeholder={current}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+      />
+      <p className="text-[10px] mt-0.5" style={{ color: TEXT_DIM }}>Current: {current} {unit}</p>
+    </div>
+  );
+
+  const handleCoreLimits = () => {
+    const p = (v: string, fb: bigint | undefined, dec = 18) => v ? BigInt(Math.round(Number(v) * 10 ** dec)) : fb ?? 0n;
+    writeContract({
+      address: ACTIVE_TREASURY as `0x${string}`,
+      abi: treasuryV2Abi,
+      functionName: "setCoreOperatorLimits",
+      args: [
+        p(buybackWethPA, curBuybackWethPA as bigint | undefined),
+        p(buybackWethPD, curBuybackWethPD as bigint | undefined),
+        p(buybackUsdcPA, curBuybackUsdcPA as bigint | undefined, 6),
+        p(buybackUsdcPD, curBuybackUsdcPD as bigint | undefined, 6),
+        p(burnTusdPA, curBurnTusdPA as bigint | undefined),
+        p(burnTusdPD, curBurnTusdPD as bigint | undefined),
+        p(stakeTusdPA, curStakeTusdPA as bigint | undefined),
+        p(stakeTusdPD, curStakeTusdPD as bigint | undefined),
+      ],
+    });
+  };
+
+  const handleConfig = () => {
+    const cd = cooldownMin ? BigInt(Math.round(Number(cooldownMin) * 60)) : (curCooldown as bigint) ?? 0n;
+    const sl = slippageBps ? BigInt(Math.round(Number(slippageBps))) : (curSlippage as bigint) ?? 0n;
+    writeContract({
+      address: ACTIVE_TREASURY as `0x${string}`,
+      abi: treasuryV2Abi,
+      functionName: "setOperatorConfig",
+      args: [cd, sl],
+    });
+  };
+
+  const handleRebalance = () => {
+    const p = (v: string, fb: bigint | undefined) => v ? BigInt(Math.round(Number(v) * 1e18)) : fb ?? 0n;
+    writeContract({
+      address: ACTIVE_TREASURY as `0x${string}`,
+      abi: treasuryV2Abi,
+      functionName: "setRebalanceLimits",
+      args: [p(rebalancePA, curRebalancePA as bigint | undefined), p(rebalancePD, curRebalancePD as bigint | undefined)],
+    });
+  };
+
+  const handleBuyStrat = () => {
+    const p = (v: string, fb: bigint | undefined) => v ? BigInt(Math.round(Number(v) * 1e18)) : fb ?? 0n;
+    writeContract({
+      address: ACTIVE_TREASURY as `0x${string}`,
+      abi: treasuryV2Abi,
+      functionName: "setBuyStrategicLimits",
+      args: [p(buyStratPA, curBuyStratPA as bigint | undefined), p(buyStratPD, curBuyStratPD as bigint | undefined)],
+    });
+  };
+
+  const tabs = [
+    { id: "core" as const, label: "Core Limits" },
+    { id: "config" as const, label: "Cooldown" },
+    { id: "rebalance" as const, label: "Rebalance" },
+    { id: "strategic" as const, label: "Strategic Buy" },
+  ];
+
+  return (
+    <div className="rounded-xl p-6" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-2 mb-5">
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => { setActiveTab(t.id); reset(); }}
+            className="px-3 py-1.5 rounded-full text-xs font-semibold transition-colors"
+            style={{
+              background: activeTab === t.id ? GOLD : "transparent",
+              color: activeTab === t.id ? "#000" : "#888",
+              border: activeTab === t.id ? "none" : "1px solid #333",
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "core" && (
+        <div className="space-y-4">
+          <p className="text-xs" style={{ color: TEXT_DIM }}>
+            Enter in standard units (e.g. 1.5 WETH, 500 USDC, 10000 ₸USD) — conversion to wei is automatic. Leave blank to keep current value.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <LimitInput label="Buyback WETH / Action" value={buybackWethPA} onChange={setBuybackWethPA} current={toEth(curBuybackWethPA as bigint | undefined).toString()} unit="WETH" />
+            <LimitInput label="Buyback WETH / Day" value={buybackWethPD} onChange={setBuybackWethPD} current={toEth(curBuybackWethPD as bigint | undefined).toString()} unit="WETH" />
+            <LimitInput label="Buyback USDC / Action" value={buybackUsdcPA} onChange={setBuybackUsdcPA} current={toEth(curBuybackUsdcPA as bigint | undefined, 6).toString()} unit="USDC" />
+            <LimitInput label="Buyback USDC / Day" value={buybackUsdcPD} onChange={setBuybackUsdcPD} current={toEth(curBuybackUsdcPD as bigint | undefined, 6).toString()} unit="USDC" />
+            <LimitInput label="Burn ₸USD / Action" value={burnTusdPA} onChange={setBurnTusdPA} current={toEth(curBurnTusdPA as bigint | undefined).toString()} unit="₸USD" />
+            <LimitInput label="Burn ₸USD / Day" value={burnTusdPD} onChange={setBurnTusdPD} current={toEth(curBurnTusdPD as bigint | undefined).toString()} unit="₸USD" />
+            <LimitInput label="Stake ₸USD / Action" value={stakeTusdPA} onChange={setStakeTusdPA} current={toEth(curStakeTusdPA as bigint | undefined).toString()} unit="₸USD" />
+            <LimitInput label="Stake ₸USD / Day" value={stakeTusdPD} onChange={setStakeTusdPD} current={toEth(curStakeTusdPD as bigint | undefined).toString()} unit="₸USD" />
+          </div>
+          <button
+            onClick={handleCoreLimits}
+            disabled={isPending || isConfirming}
+            className="w-full py-3 rounded-xl font-bold text-black transition-opacity"
+            style={{ background: GOLD, opacity: isPending || isConfirming ? 0.5 : 1 }}
+          >
+            {isPending ? "Confirm in wallet..." : isConfirming ? "Confirming..." : "Update Core Limits"}
+          </button>
+        </div>
+      )}
+
+      {activeTab === "config" && (
+        <div className="space-y-4">
+          <p className="text-xs" style={{ color: TEXT_DIM }}>
+            Cooldown in minutes between operator actions. Slippage in basis points (100 = 1%, max 1000 = 10%). Leave blank to keep current.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <LimitInput label="Cooldown (minutes)" value={cooldownMin} onChange={setCooldownMin} current={(toSec(curCooldown as bigint | undefined) / 60).toString()} unit="min" />
+            <LimitInput label="Slippage (bps)" value={slippageBps} onChange={setSlippageBps} current={toSec(curSlippage as bigint | undefined).toString()} unit="bps" />
+          </div>
+          <button
+            onClick={handleConfig}
+            disabled={isPending || isConfirming}
+            className="w-full py-3 rounded-xl font-bold text-black transition-opacity"
+            style={{ background: GOLD, opacity: isPending || isConfirming ? 0.5 : 1 }}
+          >
+            {isPending ? "Confirm in wallet..." : isConfirming ? "Confirming..." : "Update Operator Config"}
+          </button>
+        </div>
+      )}
+
+      {activeTab === "rebalance" && (
+        <div className="space-y-4">
+          <p className="text-xs" style={{ color: TEXT_DIM }}>
+            WETH limits for rebalanceStrategicToken. Enter in standard units (e.g. 0.5 WETH). Leave blank to keep current.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <LimitInput label="Rebalance WETH / Action" value={rebalancePA} onChange={setRebalancePA} current={toEth(curRebalancePA as bigint | undefined).toString()} unit="WETH" />
+            <LimitInput label="Rebalance WETH / Day" value={rebalancePD} onChange={setRebalancePD} current={toEth(curRebalancePD as bigint | undefined).toString()} unit="WETH" />
+          </div>
+          <button
+            onClick={handleRebalance}
+            disabled={isPending || isConfirming}
+            className="w-full py-3 rounded-xl font-bold text-black transition-opacity"
+            style={{ background: GOLD, opacity: isPending || isConfirming ? 0.5 : 1 }}
+          >
+            {isPending ? "Confirm in wallet..." : isConfirming ? "Confirming..." : "Update Rebalance Limits"}
+          </button>
+        </div>
+      )}
+
+      {activeTab === "strategic" && (
+        <div className="space-y-4">
+          <p className="text-xs" style={{ color: TEXT_DIM }}>
+            WETH limits for buyStrategicToken. Enter in standard units (e.g. 0.5 WETH). Leave blank to keep current.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <LimitInput label="Buy Strategic WETH / Action" value={buyStratPA} onChange={setBuyStratPA} current={toEth(curBuyStratPA as bigint | undefined).toString()} unit="WETH" />
+            <LimitInput label="Buy Strategic WETH / Day" value={buyStratPD} onChange={setBuyStratPD} current={toEth(curBuyStratPD as bigint | undefined).toString()} unit="WETH" />
+          </div>
+          <button
+            onClick={handleBuyStrat}
+            disabled={isPending || isConfirming}
+            className="w-full py-3 rounded-xl font-bold text-black transition-opacity"
+            style={{ background: GOLD, opacity: isPending || isConfirming ? 0.5 : 1 }}
+          >
+            {isPending ? "Confirm in wallet..." : isConfirming ? "Confirming..." : "Update Strategic Buy Limits"}
+          </button>
+        </div>
+      )}
+
+      {/* Status */}
+      {writeError && (
+        <p className="text-xs mt-3 px-3 py-2 rounded-lg" style={{ background: "#1a0000", border: "1px solid #ff6b6b33", color: "#ff6b6b" }}>
+          {writeError.message?.slice(0, 200)}
+        </p>
+      )}
+      {isSuccess && (
+        <p className="text-xs mt-3 px-3 py-2 rounded-lg" style={{ background: "#001a0a", border: "1px solid #34eeb633", color: "#34eeb6" }}>
+          Limits updated successfully!
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── AddStrategicToken Panel ──────────────────────────────────────────────
 function AddStrategicTokenPanel() {
   const [selected, setSelected] = useState<string>("BNKR");
@@ -1021,8 +1349,6 @@ function AddStrategicTokenPanel() {
   };
 
   return (
-    <div className="max-w-4xl w-full px-4 mb-8">
-      <SectionTitle>Add Strategic Token (Owner Only)</SectionTitle>
       <div className="rounded-xl p-6" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
         {/* Token selector */}
         <div className="mb-6">
@@ -1300,7 +1626,6 @@ function AddStrategicTokenPanel() {
                 : `Add ${selected !== "CUSTOM" ? selected : "Token"}`}
         </button>
       </div>
-    </div>
   );
 }
 
@@ -2049,22 +2374,22 @@ const Home: NextPage = () => {
       </div>
 
       {/* Main Stats Row */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 max-w-4xl w-full px-4 mb-8">
+      <div className="grid grid-cols-3 gap-3 sm:gap-4 max-w-4xl w-full px-4 mb-8">
         <StatCard
-          title="Total Burned"
-          value={`${fmtBig(tusdBurnedNum)} \u20B8USD`}
-          subtitle={`${fmtPct(burnPct)} of supply · ${fmtUsd(burnUsd)}`}
+          title={`\u20B8USD Burned`}
+          value={fmtBig(tusdBurnedNum)}
+          subtitle={`${fmtPct(burnPct)} of supply (${fmtUsdShort(burnUsd)})`}
         />
         <StatCard
-          title="Total Bought"
-          value={`${fmtBig(totalBuybackTusd)} \u20B8USD`}
-          subtitle={`${fmtPct(buybackPct)} of supply · ${fmtUsd(buybackUsd)}`}
+          title={`\u20B8USD Bought`}
+          value={fmtBig(totalBuybackTusd)}
+          subtitle={`${fmtPct(buybackPct)} of supply (${fmtUsdShort(buybackUsd)})`}
         />
         <StatCard
-          title="Total Locked"
-          value={totalLockedTusd > 0 ? `${fmtBig(totalLockedTusd)} \u20B8USD` : "\u2014"}
+          title={`\u20B8USD Locked`}
+          value={totalLockedTusd > 0 ? fmtBig(totalLockedTusd) : "\u2014"}
           subtitle={
-            totalLockedTusd > 0 ? `${fmtPct((totalLockedTusd / tusdSupplyNum) * 100)} of supply · ${fmtUsd(totalLockedTusd * tusdPriceUsd)}` : "No locked tokens"
+            totalLockedTusd > 0 ? `${fmtPct((totalLockedTusd / tusdSupplyNum) * 100)} of supply (${fmtUsdShort(totalLockedTusd * tusdPriceUsd)})` : "No locked tokens"
           }
         />
       </div>
@@ -2306,9 +2631,9 @@ const Home: NextPage = () => {
                     const d = payload[0]?.payload as DailySnapshot;
                     const total = (d.tusd || 0) + (d.weth || 0) + (d.usdc || 0) + (d.strategic || 0);
                     return (
-                      <div style={{ background: "#0c0c0c", border: "1px solid #1c1c1c", borderRadius: 8, padding: "10px 14px", color: "#e8e8e8", fontSize: 12 }}>
-                        <p className="font-semibold mb-2">{d.date}</p>
-                        <p className="font-bold mb-2" style={{ color: GOLD }}>Total: {fmtUsd(total)}</p>
+                      <div style={{ background: "#0c0c0c", border: "1px solid #1c1c1c", borderRadius: 8, padding: "8px 12px", color: "#e8e8e8", fontSize: 12, lineHeight: 1.4 }}>
+                        <p className="font-semibold mb-1">{d.date}</p>
+                        <p className="font-bold mb-1" style={{ color: GOLD }}>Total: {fmtUsd(total)}</p>
                         {d.tusd > 0.01 && <p><span style={{ color: "#43e397" }}>₸USD:</span> {fmtUsd(d.tusd)}</p>}
                         {d.weth > 0.01 && <p><span style={{ color: "#627eea" }}>WETH:</span> {fmtUsd(d.weth)}</p>}
                         {d.usdc > 0.01 && <p><span style={{ color: "#2775ca" }}>USDC:</span> {fmtUsd(d.usdc)}</p>}
@@ -2562,7 +2887,12 @@ const Home: NextPage = () => {
       {/* Owner-only panels */}
       {isOwner && (
         <>
-          <AddStrategicTokenPanel />
+          <CollapsibleSection title="Operator Limits (Owner Only)">
+            <OperatorLimitsPanel />
+          </CollapsibleSection>
+          <CollapsibleSection title="Add Strategic Token (Owner Only)">
+            <AddStrategicTokenPanel />
+          </CollapsibleSection>
           <OwnerOperationsPanel />
         </>
       )}
@@ -2593,15 +2923,29 @@ const Home: NextPage = () => {
                   {label}
                 </span>
                 {baseName ? (
-                  <a
-                    href={`https://basescan.org/address/${addr}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm hover:underline"
-                    style={{ color: "#fff" }}
-                  >
-                    {baseName}
-                  </a>
+                  <span className="flex items-center gap-1.5">
+                    <a
+                      href={`https://basescan.org/address/${addr}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm hover:underline"
+                      style={{ color: "#fff" }}
+                    >
+                      {baseName}
+                    </a>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(addr);
+                      }}
+                      className="opacity-60 hover:opacity-100 transition-opacity"
+                      title="Copy address"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#fff" }}>
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
+                    </button>
+                  </span>
                 ) : (
                   <span className="hide-address-avatar">
                     <Address address={addr} />
