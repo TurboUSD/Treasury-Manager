@@ -3302,8 +3302,7 @@ const Home: NextPage = () => {
                       onClick={() => {
                         navigator.clipboard.writeText(addr);
                       }}
-                      className="opacity-60 hover:opacity-100 transition-opacity"
-                      title="Copy address"
+                      type="button"
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -3311,8 +3310,7 @@ const Home: NextPage = () => {
                         viewBox="0 0 24 24"
                         strokeWidth="1.5"
                         stroke="currentColor"
-                        className="h-[18px] w-[18px]"
-                        style={{ color: "#a6a6a6" }}
+                        className="ml-1 h-[18px] w-[18px] cursor-pointer"
                       >
                         <path
                           strokeLinecap="round"

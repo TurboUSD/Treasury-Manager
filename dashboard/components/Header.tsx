@@ -129,30 +129,31 @@ export const Header = () => {
   return (
     <div className="sticky top-0 z-20 w-full" style={{ background: "#000000" }}>
       <div className="flex items-center justify-between h-14 px-6 max-w-7xl mx-auto">
-        {/* Logo — left */}
-        <Link href="/" passHref className="flex items-center gap-2 shrink-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="https://turbousd.com/wp-content/uploads/2025/07/TurboUSD_t.png"
-            alt="₸USD"
-            style={{ objectFit: "contain", height: "2.25rem", width: "auto" }}
-          />
-          <div className="hidden sm:flex flex-col leading-none">
-            <span className="text-sm font-bold text-white tracking-tight">₸USD Treasury</span>
-            <span className="text-[10px] text-[#a6a6a6]">Operated by AMI</span>
-          </div>
-        </Link>
+        {/* Left: Logo + nav links */}
+        <div className="flex items-center gap-4">
+          <Link href="/" passHref className="flex items-center gap-2 shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="https://turbousd.com/wp-content/uploads/2025/07/TurboUSD_t.png"
+              alt="₸USD"
+              style={{ objectFit: "contain", height: "2.25rem", width: "auto" }}
+            />
+            <div className="hidden sm:flex flex-col leading-none">
+              <span className="text-sm font-bold text-white tracking-tight">₸USD Treasury</span>
+              <span className="text-[10px] text-[#a6a6a6]">Operated by AMI</span>
+            </div>
+          </Link>
 
-        {/* Desktop center: nav + socials + Get ₸USD — spread evenly */}
-        <div className="hidden lg:flex items-center gap-5 mx-8">
-          <ul className="flex items-center gap-1">
+          {/* Desktop nav links — next to logo */}
+          <ul className="hidden lg:flex items-center gap-1">
             <HeaderMenuLinks />
           </ul>
+        </div>
 
-          <div className="w-px h-5 bg-[#222]" />
-
-          {/* Social icons */}
-          <div className="flex items-center gap-2">
+        {/* Right: socials + Get ₸USD + wallet + burger */}
+        <div className="flex items-center gap-3 shrink-0">
+          {/* Social icons — desktop only */}
+          <div className="hidden lg:flex items-center gap-2">
             {SOCIAL_LINKS.map(({ label, href, icon }) => (
               <a
                 key={label}
@@ -167,14 +168,12 @@ export const Header = () => {
             ))}
           </div>
 
-          <div className="w-px h-5 bg-[#222]" />
-
-          {/* Get ₸USD button */}
+          {/* Get ₸USD button — desktop only */}
           <a
             href="https://turbousd.com/buy"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs font-semibold rounded-full px-4 py-1.5 transition-all duration-200"
+            className="hidden lg:inline-block text-xs font-semibold rounded-full px-4 py-1.5 transition-all duration-200"
             style={{
               border: "1.5px solid #43e397",
               color: "#43e397",
@@ -191,10 +190,10 @@ export const Header = () => {
           >
             Get ₸USD
           </a>
-        </div>
 
-        {/* Right side: connect wallet + burger */}
-        <div className="flex items-center gap-3 shrink-0">
+          {/* Divider — desktop only */}
+          <div className="hidden lg:block w-px h-5 bg-[#222]" />
+
           <RainbowKitCustomConnectButton />
           {isLocalNetwork && <FaucetButton />}
 
@@ -217,7 +216,7 @@ export const Header = () => {
           }}
         >
           <style>{`@keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
-          <div className="px-6 py-4 space-y-0">
+          <div className="px-6 pb-4 space-y-0">
             {menuLinks.map(({ label, href, external }) =>
               external ? (
                 <a
