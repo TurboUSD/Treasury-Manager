@@ -493,10 +493,10 @@ const STRATEGIC_PRESETS: StrategicPreset[] = [
     v4Fee: 8388608,
     v4TickSpacing: 200,
     v4Hooks: V4_HOOKS,
-    buyPriceUsd: "0.00001",
+    buyPriceUsd: "0.00001534",
     buyMarketCapUsd: "1000000",
-    entryDate: "2026-03-18",
-    entryTxHash: "",
+    entryDate: "2026-04-06",
+    entryTxHash: "0x98b109a4676955aaa51f6838e39beb2e90467390e07bbb68277d70ccbe1a119b",
   },
   {
     ticker: "CLAWD",
@@ -571,7 +571,7 @@ const EMPTY_PRESET: StrategicPreset = {
 
 // ── Known historical operations (TreasuryManager v1 + BurnEngine) ────────
 type Operation = {
-  type: "Buyback" | "Burn" | "Rebalance" | "Stake" | "BurnEngine" | "StrategicBuy" | "StrategicSell";
+  type: "Buyback" | "Burn" | "Rebalance" | "Stake" | "BurnEngine" | "StrategicBuy" | "StrategicSell" | "FeeClaim" | string;
   amount: string;
   token: string;
   usdValue: string;
@@ -581,8 +581,8 @@ type Operation = {
   roiPct?: number; // e.g. 250 (green) or -30 (red)
 };
 
-// Historical ops — USD values for burns are computed dynamically from live price
-// StrategicBuy ops carry wethSpent + tokenReceived so buy-price is computed from real execution data
+// Historical ops — USD values for burns are computed dynamically from live price.
+// StrategicBuy entries are read from Supabase operations table (written by AMI 9000).
 const HISTORICAL_OPS_RAW = [
   {
     type: "Buyback" as const,
@@ -620,7 +620,7 @@ const HISTORICAL_OPS_RAW = [
     txHash: "0xb8df47dcd3ff0e07efa98007360dba7d0ab74058bd283163c9db397d34913f96",
     tusdAmount: 1_000,
   },
-  // StrategicBuy entries are read dynamically from on-chain events (see onChainBuys)
+  // StrategicBuy entries are no longer hardcoded here — they come from Supabase
 ];
 
 // Total ₸USD already accounted for in HISTORICAL_OPS_RAW for BurnEngine
@@ -2219,17 +2219,71 @@ const Home: NextPage = () => {
       };
     });
 
-    // Append on-chain StrategicBuy events (auto-discovered, no manual entries needed)
-    for (const buy of onChainBuys) {
-      const ticker = tokenToTicker[buy.token] || buy.token.slice(0, 6);
-      allOps.push({
-        type: "StrategicBuy",
-        amount: `${fmtBig(buy.tokenReceived)} ${ticker}`,
-        token: ticker,
-        usdValue: wethPriceUsd > 0 ? fmtUsd(buy.wethSpent * wethPriceUsd) : "\u2014",
-        date: buy.date,
-        txHash: buy.txHash,
-      });
+    // Append operations from Supabase DB (written by AMI 9000 and scanner).
+    // The hardcoded HISTORICAL_OPS_RAW above covers legacy entries.
+    // DB ops with a tx_hash that matches a hardcoded entry are skipped to avoid duplicates.
+    const hardcodedTxHashes = new Set(HISTORICAL_OPS_RAW.map(op => op.txHash));
+
+    if (apiData?.operations) {
+      const seenTx = new Set<string>();
+      for (const op of apiData.operations) {
+        // Skip if already shown via hardcoded entries
+        if (op.tx_hash && hardcodedTxHashes.has(op.tx_hash)) continue;
+        // Skip Other Fee gas rows (they supplement the main row, not shown separately)
+        if (op.type === "Other Fee" && op.sell_currency === "ETH") continue;
+        const txKey = `${op.tx_hash || ""}_${op.op_type || ""}`;
+        // For multi-row ops, deduplicate by tx_hash+op_type
+        if (op.tx_hash && seenTx.has(txKey)) continue;
+        if (op.tx_hash) seenTx.add(txKey);
+
+        const opType = (op.op_type || "Trade") as Operation["type"];
+        let amount = op.amount_raw || "";
+        let token = "";
+        let usdValue = "\u2014";
+
+        if (opType === "StrategicBuy") {
+          const ticker = tokenToTicker[(op.token_address || "").toLowerCase()] || (op.buy_currency || "");
+          amount = amount || `${fmtBig(op.buy_amount || 0)} ${ticker}`;
+          token = ticker;
+          usdValue = wethPriceUsd > 0 && op.sell_amount ? fmtUsd(op.sell_amount * wethPriceUsd) : "\u2014";
+        } else if (opType === "Buyback") {
+          amount = amount || `${fmtBig(op.buy_amount || 0)} \u20B8USD`;
+          token = op.sell_currency || "WETH";
+          usdValue = wethPriceUsd > 0 && op.sell_amount ? fmtUsd(op.sell_amount * wethPriceUsd) : "\u2014";
+        } else if (opType === "Burn") {
+          const tusdAmt = op.sell_amount || 0;
+          amount = amount || `${fmtBig(tusdAmt)} \u20B8USD`;
+          token = "\u20B8USD";
+          usdValue = tusdPriceUsd > 0 ? fmtUsd(tusdAmt * tusdPriceUsd) : "\u2014";
+        } else if (opType === "Stake") {
+          const tusdAmt = op.sell_amount || 0;
+          amount = amount || `${fmtBig(tusdAmt)} \u20B8USD`;
+          token = "\u20B8USD";
+          usdValue = tusdPriceUsd > 0 ? fmtUsd(tusdAmt * tusdPriceUsd) : "\u2014";
+        } else if (opType === "BurnEngine") {
+          const tusdAmt = op.sell_amount || 0;
+          amount = amount || `${fmtBig(tusdAmt)} \u20B8USD`;
+          token = "\u20B8USD";
+          usdValue = tusdPriceUsd > 0 ? fmtUsd(tusdAmt * tusdPriceUsd) : "\u2014";
+        } else if (opType === "Rebalance") {
+          amount = amount || `${fmtBig(op.sell_amount || 0)} ${op.sell_currency || ""}`;
+          token = op.buy_currency || "";
+          usdValue = "\u2014";
+        } else {
+          amount = amount || `${op.sell_amount || 0} ${op.sell_currency || ""}`;
+          token = op.sell_currency || "";
+          usdValue = "\u2014";
+        }
+
+        allOps.push({
+          type: opType,
+          amount,
+          token,
+          usdValue,
+          date: op.date_utc ? op.date_utc.slice(0, 10) : "\u2014",
+          txHash: op.tx_hash || "",
+        });
+      }
     }
 
     // Only add a dynamic entry for NEW BurnEngine burns beyond the known historical ones
@@ -2280,7 +2334,7 @@ const Home: NextPage = () => {
     wethPriceUsd,
     engineLastCycle,
     opsSort,
-    onChainBuys,
+    apiData?.operations,
     tokenToTicker,
   ]);
 
@@ -2338,6 +2392,7 @@ const Home: NextPage = () => {
     Stake: "#ffcf72",
     StrategicBuy: "#a78bfa",
     StrategicSell: "#fb923c",
+    FeeClaim: "#4ade80",
   };
 
   return (
@@ -3114,7 +3169,7 @@ const Home: NextPage = () => {
                 color: GOLD,
               }}
             >
-              Export Operations (CoinTracking CSV)
+              Export Operations (CoinTracking Excel)
             </button>
           </div>
           <CollapsibleSection title="Operator Limits (Owner Only)">

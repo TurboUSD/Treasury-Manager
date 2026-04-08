@@ -20,6 +20,7 @@ const STATE_VIEW = "0xA3c0c9b65baD0b08107Aa264b0f3dB444b867A71";
 const BURN_ENGINE = "0x022688aDcDc24c648F4efBa76e42CD16BD0863AB";
 const LEGACY_FEE_SOURCE = "0x1eaf444ebDf6495C57aD52A04C61521bBf564ace";
 const LP_FEE_SOURCE = "0x33e2Eda238edcF470309b8c6D228986A1204c8f9";
+const LEGACY_FEE_CLAIMER = "0x2c857A891338fe17D86651B7B78C59c96e274246"; // Permissionless: claims both legacy + LP fees
 const STAKING_CONTRACT = "0x2a70a42BC0524aBCA9Bff59a51E7aAdB575DC89A";
 
 // ── Strategic tokens ───────────────────────────────────────────────────────
@@ -62,8 +63,8 @@ const burnEngineGetStatus = parseAbiItem("function getStatus() view returns (uin
 const ownerAbi = parseAbiItem("function owner() view returns (address)");
 const operatorAbi = parseAbiItem("function authorizedOperator() view returns (address)");
 
-const strategicBuyEvent = parseAbiItem("event StrategicBuyExecuted(address indexed token, uint256 wethSpent, uint256 tokenReceived)");
 const transferEvent = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
+const burnEngineCycleEvent = parseAbiItem("event CycleExecuted(uint256 wethClaimed, uint256 tusdClaimed, uint256 wethSwapped, uint256 tusdFromSwap, uint256 totalTusdBurned, uint256 totalBurnedAllTime, uint256 timestamp)");
 
 // ── Price math ─────────────────────────────────────────────────────────────
 const Q192 = 2n ** 192n;
@@ -129,22 +130,18 @@ function toIsoUtc(ts: number): string {
 /** Returns CoinTracking-compatible date string: "DD.MM.YYYY HH:MM:SS" in Europe/Madrid timezone */
 function toMadridCT(ts: number): string {
   const d = new Date(ts * 1000);
-  // Build parts using Intl.DateTimeFormat for reliable timezone conversion
   const fmt = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Madrid",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
     hour12: false,
   });
   const parts = fmt.formatToParts(d);
   const p = (type: string) => parts.find(x => x.type === type)?.value || "00";
-  // "DD.MM.YYYY HH:MM:SS"
   return `${p("day")}.${p("month")}.${p("year")} ${p("hour")}:${p("minute")}:${p("second")}`;
 }
+
+
 
 // ── Main GET handler ───────────────────────────────────────────────────────
 export async function GET() {
@@ -313,11 +310,15 @@ export async function GET() {
     const baseManagedUsd = tusdBalNum * tusdPriceUsd + wethBalNum * wethPriceUsd + usdcBalNum;
     const totalManagedUsd = baseManagedUsd + strategicTotalUsd;
 
-    // 3. Incremental event scanning — find new StrategicBuy events
+    // 3. Incremental scanner — PASSIVE EVENTS ONLY
+    //    AMI 9000 is the sole writer for operations it initiates (StrategicBuy,
+    //    Buyback, Rebalance, Burn, Stake, Admin). The dashboard scanner only
+    //    writes events that happen without AMI (BurnEngine cycles, permissionless
+    //    fee claims). These are NOT exported to CoinTracking but are shown in
+    //    the dashboard and available for AMI to read if asked.
     const { data: scanRow } = await sb.from("scan_state").select("block_number").eq("key", "last_block").single();
     let lastScannedBlock = BigInt(scanRow?.block_number || 0);
 
-    // On first run, start from ~100 days ago
     if (lastScannedBlock === 0n) {
       lastScannedBlock = currentBlock > 4_320_000n ? currentBlock - 4_320_000n : 0n;
     }
@@ -327,74 +328,203 @@ export async function GET() {
 
     if (fromBlock <= currentBlock) {
       try {
-        // Scan StrategicBuy events
-        const buyLogs = await client.getLogs({
-          address: ACTIVE_TREASURY as `0x${string}`,
-          event: strategicBuyEvent,
+        // ── BurnEngine CycleExecuted events ───────────────────────────────
+        // Exchange: "BurnEngine", Type: "Burn"
+        const cycleLogs = await client.getLogs({
+          address: BURN_ENGINE as `0x${string}`,
+          event: burnEngineCycleEvent,
           fromBlock,
           toBlock: currentBlock,
         });
 
-        for (const log of buyLogs) {
-          const tokenAddr = (log.args as { token: string }).token.toLowerCase();
-          const wethSpent = Number(formatEther((log.args as { wethSpent: bigint }).wethSpent));
-          const tokenReceived = Number(formatEther((log.args as { tokenReceived: bigint }).tokenReceived));
-
-          // Check if already in DB (by tx_hash)
+        for (const log of cycleLogs) {
           const { data: existing } = await sb
             .from("operations")
             .select("id")
             .eq("tx_hash", log.transactionHash)
-            .eq("op_type", "StrategicBuy")
+            .eq("op_type", "BurnEngine")
             .limit(1);
-
           if (existing && existing.length > 0) continue;
 
-          // Find token info
-          const strat = STRATEGIC_TOKENS.find(t => t.address.toLowerCase() === tokenAddr);
-          const ticker = strat?.ticker || tokenAddr.slice(0, 10);
-          const ctTickerToken = strat?.ctTicker || ticker;
+          const args = log.args as {
+            wethClaimed: bigint; tusdClaimed: bigint;
+            wethSwapped: bigint; tusdFromSwap: bigint;
+            totalTusdBurned: bigint; totalBurnedAllTime: bigint;
+            timestamp: bigint;
+          };
+          const tusdBurned = Number(formatEther(args.totalTusdBurned));
+          const ts = Number(args.timestamp);
+          const basescanLink = `https://basescan.org/tx/${log.transactionHash}`;
 
-          // Estimate timestamp from block (~2s per block on Base)
+          const row = {
+            type: "Spend",
+            buy_amount: null,
+            buy_currency: null,
+            sell_amount: tusdBurned,
+            sell_currency: "TUSD2",
+            exchange: "BurnEngine",
+            group_name: "Burn",
+            comment: basescanLink,
+            op_type: "BurnEngine",
+            amount_raw: `${tusdBurned.toLocaleString("en-US", { maximumFractionDigits: 2 })} TUSD burned (cycle)`,
+            tx_hash: log.transactionHash,
+            block_number: Number(log.blockNumber),
+            date_utc: toIsoUtc(ts),
+            date_madrid: toMadridCT(ts),
+            source: "scanner",
+          };
+
+          const { error: insertErr } = await sb.from("operations").insert([row]);
+          if (!insertErr) newOpsInserted++;
+        }
+
+        // ── Permissionless fee claims ─────────────────────────────────────
+        // When LegacyFeeClaimer (0x2c85...) is called, it triggers:
+        //   1) TUSD from LEGACY_FEE_SOURCE → BurnEngine  (Exchange: "Legacy Fee Claim")
+        //   2) TUSD from LP_FEE_SOURCE → BurnEngine       (Exchange: "BurnEngine")
+        //   3) WETH from LP_FEE_SOURCE → BurnEngine       (Exchange: "BurnEngine")
+        // All three can happen in the SAME tx — dedup uses tx_hash + exchange + buy_currency.
+        //
+        // Group for all fee claims: "Fee Claim", Type: "Reward"
+
+        // 1) Legacy TUSD fees: LEGACY_FEE_SOURCE → BurnEngine
+        const legacyTusdLogs = await client.getLogs({
+          address: TUSD as `0x${string}`,
+          event: transferEvent,
+          args: { from: LEGACY_FEE_SOURCE as `0x${string}`, to: BURN_ENGINE as `0x${string}` },
+          fromBlock,
+          toBlock: currentBlock,
+        });
+
+        for (const log of legacyTusdLogs) {
+          const { data: existing } = await sb
+            .from("operations")
+            .select("id")
+            .eq("tx_hash", log.transactionHash)
+            .eq("op_type", "FeeClaim")
+            .eq("exchange", "Legacy Fee Claim")
+            .limit(1);
+          if (existing && existing.length > 0) continue;
+
+          const amount = Number(formatEther((log.args as { value: bigint }).value));
           const blockDiff = Number(currentBlock - log.blockNumber);
-          const ts = now - blockDiff * 2;
-          const dateUtc = toIsoUtc(ts);
-          const dateMadrid = toMadridCT(ts);
+          const ts = Math.floor(Date.now() / 1000) - blockDiff * 2;
+          const basescanLink = `https://basescan.org/tx/${log.transactionHash}`;
 
-          // Compute WETH price at time (approximate — use current price for now)
-          const wethUsd = wethPriceUsd;
-          const tokenPriceAtBuy = tokenReceived > 0 ? (wethSpent * wethUsd) / tokenReceived : 0;
+          const row = {
+            type: "Reward",
+            buy_amount: amount,
+            buy_currency: "TUSD2",
+            sell_amount: null,
+            sell_currency: null,
+            exchange: "Legacy Fee Claim",
+            group_name: "Fee Claim",
+            comment: basescanLink,
+            op_type: "FeeClaim",
+            amount_raw: `${amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} TUSD (Legacy fee claim)`,
+            tx_hash: log.transactionHash,
+            block_number: Number(log.blockNumber),
+            date_utc: toIsoUtc(ts),
+            date_madrid: toMadridCT(ts),
+            source: "scanner",
+          };
 
-          // Row 1: Gas fee as Other Fee (ETH)
-          // We don't have gas cost from logs alone; skip gas row for now.
-          // AMI 9000 will add its own gas rows.
+          const { error: insertErr } = await sb.from("operations").insert([row]);
+          if (!insertErr) newOpsInserted++;
+        }
 
-          // Row 2: Trade — token bought with WETH
-          const rows = [
-            {
-              type: "Trade",
-              buy_amount: tokenReceived,
-              buy_currency: ctTickerToken,
-              sell_amount: wethSpent,
-              sell_currency: "WETH",
-              exchange: "Treasury Manager",
-              group_name: "Treasury Manager",
-              comment: `Strategic Buy ${ticker} via ${strat?.isV4 ? "V4" : "V3"}`,
-              op_type: "StrategicBuy",
-              token_address: tokenAddr,
-              amount_raw: `${tokenReceived.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${ticker}`,
-              weth_price_usd: wethUsd,
-              token_price_usd: tokenPriceAtBuy,
-              tx_hash: log.transactionHash,
-              block_number: Number(log.blockNumber),
-              date_utc: dateUtc,
-              date_madrid: dateMadrid,
-              source: "dashboard",
-            },
-          ];
+        // 2) LP TUSD fees: LP_FEE_SOURCE → BurnEngine
+        const lpTusdLogs = await client.getLogs({
+          address: TUSD as `0x${string}`,
+          event: transferEvent,
+          args: { from: LP_FEE_SOURCE as `0x${string}`, to: BURN_ENGINE as `0x${string}` },
+          fromBlock,
+          toBlock: currentBlock,
+        });
 
-          const { error } = await sb.from("operations").insert(rows);
-          if (!error) newOpsInserted += rows.length;
+        for (const log of lpTusdLogs) {
+          const { data: existing } = await sb
+            .from("operations")
+            .select("id")
+            .eq("tx_hash", log.transactionHash)
+            .eq("op_type", "FeeClaim")
+            .eq("exchange", "BurnEngine")
+            .eq("buy_currency", "TUSD2")
+            .limit(1);
+          if (existing && existing.length > 0) continue;
+
+          const amount = Number(formatEther((log.args as { value: bigint }).value));
+          const blockDiff = Number(currentBlock - log.blockNumber);
+          const ts = Math.floor(Date.now() / 1000) - blockDiff * 2;
+          const basescanLink = `https://basescan.org/tx/${log.transactionHash}`;
+
+          const row = {
+            type: "Reward",
+            buy_amount: amount,
+            buy_currency: "TUSD2",
+            sell_amount: null,
+            sell_currency: null,
+            exchange: "BurnEngine",
+            group_name: "Fee Claim",
+            comment: basescanLink,
+            op_type: "FeeClaim",
+            amount_raw: `${amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} TUSD (LP fee claim)`,
+            tx_hash: log.transactionHash,
+            block_number: Number(log.blockNumber),
+            date_utc: toIsoUtc(ts),
+            date_madrid: toMadridCT(ts),
+            source: "scanner",
+          };
+
+          const { error: insertErr } = await sb.from("operations").insert([row]);
+          if (!insertErr) newOpsInserted++;
+        }
+
+        // 3) LP WETH fees: LP_FEE_SOURCE → BurnEngine
+        const lpWethLogs = await client.getLogs({
+          address: WETH_ADDR as `0x${string}`,
+          event: transferEvent,
+          args: { from: LP_FEE_SOURCE as `0x${string}`, to: BURN_ENGINE as `0x${string}` },
+          fromBlock,
+          toBlock: currentBlock,
+        });
+
+        for (const log of lpWethLogs) {
+          const { data: existing } = await sb
+            .from("operations")
+            .select("id")
+            .eq("tx_hash", log.transactionHash)
+            .eq("op_type", "FeeClaim")
+            .eq("exchange", "BurnEngine")
+            .eq("buy_currency", "WETH")
+            .limit(1);
+          if (existing && existing.length > 0) continue;
+
+          const amount = Number(formatEther((log.args as { value: bigint }).value));
+          const blockDiff = Number(currentBlock - log.blockNumber);
+          const ts = Math.floor(Date.now() / 1000) - blockDiff * 2;
+          const basescanLink = `https://basescan.org/tx/${log.transactionHash}`;
+
+          const row = {
+            type: "Reward",
+            buy_amount: amount,
+            buy_currency: "WETH",
+            sell_amount: null,
+            sell_currency: null,
+            exchange: "BurnEngine",
+            group_name: "Fee Claim",
+            comment: basescanLink,
+            op_type: "FeeClaim",
+            amount_raw: `${amount.toLocaleString("en-US", { maximumFractionDigits: 6 })} WETH (LP fee claim)`,
+            tx_hash: log.transactionHash,
+            block_number: Number(log.blockNumber),
+            date_utc: toIsoUtc(ts),
+            date_madrid: toMadridCT(ts),
+            source: "scanner",
+          };
+
+          const { error: insertErr } = await sb.from("operations").insert([row]);
+          if (!insertErr) newOpsInserted++;
         }
 
         // Update scan state
@@ -404,7 +534,7 @@ export async function GET() {
           updated_at: new Date().toISOString(),
         });
       } catch (e) {
-        console.error("Event scan error:", e);
+        console.error("Passive event scan error:", e);
       }
     }
 
@@ -561,7 +691,7 @@ export async function GET() {
       ...cacheData,
       operations: ops || [],
       cached: false,
-      newOpsInserted,
+      newOpsInserted: 0, // Operations written exclusively by AMI 9000
     });
   } catch (error) {
     console.error("Treasury data API error:", error);
