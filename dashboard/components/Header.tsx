@@ -125,6 +125,7 @@ export const Header = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const mobileContentRef = useRef<HTMLDivElement>(null);
   useOutsideClick(mobileMenuRef, () => setMobileOpen(false));
 
   return (
@@ -179,18 +180,20 @@ export const Header = () => {
         </div>
       </div>
 
-      {/* Mobile dropdown menu — slides down */}
-      {mobileOpen && (
-        <div
-          ref={mobileMenuRef}
-          className="lg:hidden"
-          style={{
-            background: "#000",
-            animation: "slideDown 0.2s ease-out",
-          }}
-        >
-          <style>{`@keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
-          <div className="px-6 pb-4 space-y-0" style={{ paddingTop: 10 }}>
+      {/* Mobile dropdown menu — height collapse like Bootstrap */}
+      <div
+        ref={mobileMenuRef}
+        className="lg:hidden absolute left-0 right-0 overflow-hidden"
+        style={{
+          background: "#000",
+          top: "3.5rem",
+          zIndex: 50,
+          maxHeight: mobileOpen ? `${mobileContentRef.current?.scrollHeight ?? 500}px` : "0px",
+          transition: "max-height 0.3s ease",
+          boxShadow: mobileOpen ? "0 8px 24px rgba(0,0,0,0.6)" : "none",
+        }}
+      >
+        <div ref={mobileContentRef} className="px-6 pb-4 space-y-0" style={{ paddingTop: 10 }}>
             {menuLinks.map(({ label, href, external }) =>
               external ? (
                 <a
@@ -257,7 +260,7 @@ export const Header = () => {
             </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };
