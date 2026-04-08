@@ -2941,21 +2941,25 @@ const Home: NextPage = () => {
 
       {/* Operations Table */}
       <div className="max-w-4xl w-full px-4 mb-8">
-        <div className="flex items-center justify-between mb-0">
+        <div className="flex items-center justify-between" style={{ marginBottom: "-0.5rem" }}>
           <SectionTitle>Operations</SectionTitle>
-          {(isOwner || isOperator) && (
-            <button
-              onClick={() => window.open("/api/export-operations", "_blank")}
-              className="btn btn-xs sm:btn-sm"
-              style={{
-                background: "transparent",
-                border: `1px solid ${GOLD}`,
-                color: GOLD,
-              }}
-            >
-              Export Excel
-            </button>
-          )}
+          {connectedAddress &&
+            apiData &&
+            (connectedAddress.toLowerCase() === apiData.ownerAddr?.toLowerCase() ||
+              connectedAddress.toLowerCase() === apiData.operatorAddr?.toLowerCase()) && (
+              <button
+                onClick={() => window.open("/api/export-operations", "_blank")}
+                className="btn btn-xs sm:btn-sm"
+                style={{
+                  background: "transparent",
+                  border: `1px solid ${GOLD}`,
+                  color: GOLD,
+                  marginTop: "-1rem",
+                }}
+              >
+                Export Excel
+              </button>
+            )}
         </div>
         <div
           className="rounded-xl overflow-hidden text-xs sm:text-sm"
