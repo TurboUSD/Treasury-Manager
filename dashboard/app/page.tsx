@@ -811,14 +811,14 @@ function LegacyFeeBurnerPanel() {
         style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
       >
         {/* Left: How it works */}
-        <div className="text-sm space-y-1">
+        <div className="text-sm" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <p
-            className="font-semibold text-xs uppercase tracking-widest mb-2"
-            style={{ color: TEXT_MUTED, fontWeight: 600 }}
+            className="font-semibold text-xs uppercase tracking-widest"
+            style={{ color: TEXT_MUTED, fontWeight: 600, marginBottom: "0.25rem" }}
           >
             How it works
           </p>
-          <p className="text-white/80" style={{ paddingLeft: "1.2em", textIndent: "-1.2em" }}>
+          <p className="text-white/80" style={{ paddingLeft: "1.2em", textIndent: "-1.2em", lineHeight: 1.4 }}>
             ↳ Claims Clanker LP fees <span style={{ color: TEXT_MUTED, fontWeight: 600 }}>(WETH + ₸USD)</span> and
             Legacy fees <span style={{ color: TEXT_MUTED, fontWeight: 600 }}>(₸USD)</span>
           </p>
@@ -836,7 +836,7 @@ function LegacyFeeBurnerPanel() {
         {/* Right: Claim & Burn card */}
         <div
           className="rounded-lg px-5 py-3 sm:py-5 space-y-3 min-w-[220px] mt-0"
-          style={{ background: "#080808", border: `1px solid #1a1a1a` }}
+          style={{ background: "#080808", border: `1px solid #1a1a1a`, paddingTop: 3 }}
         >
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-white/60 mb-1">Claim & Burn</p>
@@ -2833,6 +2833,41 @@ const Home: NextPage = () => {
         />
       </div>
 
+      {/* Zero ₸USD Sold Banner */}
+      <div className="max-w-4xl w-full px-4 mb-8">
+        <div
+          className="relative rounded-xl overflow-hidden px-5 py-4 flex items-center gap-4"
+          style={{
+            background: "linear-gradient(135deg, #002a10 0%, #00150a 100%)",
+            border: "1px solid #0f5a2a",
+          }}
+        >
+          {/* No-sell icon */}
+          <div className="shrink-0 text-3xl" style={{ lineHeight: 1 }}>
+            🚫
+          </div>
+          {/* Text */}
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-sm sm:text-base" style={{ color: "#43e397" }}>
+              {`$\u20B8USD Sold: Zero. Never.`}
+            </div>
+            <div className="text-xs sm:text-sm mt-0.5" style={{ color: "#2cab6f" }}>
+              No function in the contract to sell {`\u20B8USD`}. Not disabled, not paused — it doesn{"'"}t exist. Fully
+              verifiable onchain.
+            </div>
+          </div>
+          {/* Big zero */}
+          <div className="shrink-0 text-right">
+            <div className="text-3xl sm:text-4xl font-black" style={{ color: "#ef4444", lineHeight: 1 }}>
+              0
+            </div>
+            <div className="text-[10px] sm:text-xs mt-1 whitespace-nowrap" style={{ color: "#2cab6f" }}>
+              {`\u20B8USD sold \u00B7 ever`}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Treasury Balances */}
       <div className="max-w-4xl w-full px-4 mb-8">
         <SectionTitle>Treasury Balances</SectionTitle>
@@ -2934,7 +2969,7 @@ const Home: NextPage = () => {
                         <td>
                           <span className="font-semibold text-white">{row.preset.ticker}</span>
                         </td>
-                        <td className="font-mono text-white">
+                        <td className="text-white">
                           {/* Desktop: show amount */}
                           <span className="hidden sm:inline">{fmtBig(row.balance)}</span>
                           {/* Mobile: tap to toggle ALL rows USD */}
@@ -2951,7 +2986,7 @@ const Home: NextPage = () => {
                         <td className="hidden sm:table-cell" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
                           {row.valueUsd > 0 ? fmtUsd(row.valueUsd) : "—"}
                         </td>
-                        <td className="hidden sm:table-cell font-mono" style={{ color: TEXT_DIM }}>
+                        <td className="hidden sm:table-cell" style={{ color: TEXT_DIM }}>
                           {buyPriceFmt}
                         </td>
                         <td style={{ color: TEXT_DIM }}>
@@ -3077,59 +3112,60 @@ const Home: NextPage = () => {
                 </button>
               ))}
             </div>
-            {/* Time range dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setChartRangeOpen(prev => !prev)}
-                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full transition-colors"
-                style={{
-                  background: "#ffffff10",
-                  color: "#fff",
-                  border: "1px solid #555",
-                }}
-              >
-                {chartRange === "max" ? "Max" : "30D"}
-                <svg
-                  width="10"
-                  height="10"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
+            {/* Time range dropdown — only for "all" view (strategic has no historical per-token data) */}
+            {chartView === "all" && (
+              <div className="relative">
+                <button
+                  onClick={() => setChartRangeOpen(prev => !prev)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-colors"
                   style={{
-                    transform: chartRangeOpen ? "rotate(180deg)" : "rotate(0deg)",
-                    transition: "transform 0.15s",
+                    background: "transparent",
+                    color: "#fff",
                   }}
                 >
-                  <path
-                    fillRule="evenodd"
-                    d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </button>
-              {chartRangeOpen && (
-                <div
-                  className="absolute right-0 mt-1 rounded-lg overflow-hidden z-10"
-                  style={{ background: "#1c1c1c", border: "1px solid #333", minWidth: 70 }}
-                >
-                  {(["30d", "max"] as const).map(r => (
-                    <button
-                      key={r}
-                      onClick={() => {
-                        setChartRange(r);
-                        setChartRangeOpen(false);
-                      }}
-                      className="block w-full text-left px-3 py-1.5 text-xs font-medium transition-colors"
-                      style={{
-                        background: chartRange === r ? "#ffffff10" : "transparent",
-                        color: chartRange === r ? "#fff" : TEXT_MUTED,
-                      }}
-                    >
-                      {r === "max" ? "Max" : "30D"}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                  {chartRange === "max" ? "Max" : "30D"}
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    style={{
+                      transform: chartRangeOpen ? "rotate(180deg)" : "rotate(0deg)",
+                      transition: "transform 0.15s",
+                    }}
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </button>
+                {chartRangeOpen && (
+                  <div
+                    className="absolute right-0 mt-1 rounded-lg overflow-hidden z-10"
+                    style={{ background: "#1c1c1c", border: "1px solid #333", minWidth: 70 }}
+                  >
+                    {(["30d", "max"] as const).map(r => (
+                      <button
+                        key={r}
+                        onClick={() => {
+                          setChartRange(r);
+                          setChartRangeOpen(false);
+                        }}
+                        className="block w-full text-left px-3 py-1.5 text-xs font-medium transition-colors"
+                        style={{
+                          background: chartRange === r ? "#ffffff10" : "transparent",
+                          color: chartRange === r ? "#fff" : TEXT_MUTED,
+                        }}
+                      >
+                        {r === "max" ? "Max" : "30D"}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Clickable legend */}
@@ -3532,13 +3568,13 @@ const Home: NextPage = () => {
                   {label}
                 </span>
                 {baseName ? (
-                  <span className="flex items-center">
+                  <span className="flex items-center text-sm">
                     <a
                       href={`https://basescan.org/address/${addr}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-base hover:underline"
-                      style={{ color: "#fff" }}
+                      className="text-sm hover:underline"
+                      style={{ color: "#fff", fontFamily: "inherit" }}
                     >
                       {baseName}
                     </a>
@@ -3547,7 +3583,7 @@ const Home: NextPage = () => {
                     </span>
                   </span>
                 ) : (
-                  <span className="hide-address-avatar">
+                  <span className="hide-address-avatar text-sm" style={{ fontFamily: "inherit" }}>
                     <Address address={addr} />
                   </span>
                 )}
