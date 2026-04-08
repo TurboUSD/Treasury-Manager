@@ -811,21 +811,21 @@ function LegacyFeeBurnerPanel() {
         style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
       >
         {/* Left: How it works */}
-        <div className="text-sm" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <div className="text-sm" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           <p
             className="font-semibold text-xs uppercase tracking-widest"
-            style={{ color: TEXT_MUTED, fontWeight: 600, marginBottom: "0.25rem" }}
+            style={{ color: TEXT_MUTED, fontWeight: 600, margin: 0 }}
           >
             How it works
           </p>
-          <p className="text-white/80" style={{ paddingLeft: "1.2em", textIndent: "-1.2em", lineHeight: 1.4 }}>
+          <p className="text-white/80" style={{ paddingLeft: "1.2em", textIndent: "-1.2em", lineHeight: 1.4, margin: 0 }}>
             ↳ Claims Clanker LP fees <span style={{ color: TEXT_MUTED, fontWeight: 600 }}>(WETH + ₸USD)</span> and
             Legacy fees <span style={{ color: TEXT_MUTED, fontWeight: 600 }}>(₸USD)</span>
           </p>
-          <p className="text-white/80" style={{ paddingLeft: "1.2em", textIndent: "-1.2em" }}>
+          <p className="text-white/80" style={{ paddingLeft: "1.2em", textIndent: "-1.2em", margin: 0 }}>
             ↳ Swaps WETH → ₸USD
           </p>
-          <p className="text-white/80" style={{ paddingLeft: "1.2em", textIndent: "-1.2em" }}>
+          <p className="text-white/80" style={{ paddingLeft: "1.2em", textIndent: "-1.2em", margin: 0 }}>
             ↳ Burns ALL ₸USD to{" "}
             <span className="font-mono text-xs" style={{ color: GOLD }}>
               0xdead
@@ -835,13 +835,17 @@ function LegacyFeeBurnerPanel() {
 
         {/* Right: Claim & Burn card */}
         <div
-          className="rounded-lg px-5 py-3 sm:py-5 space-y-3 min-w-[220px] mt-0"
-          style={{ background: "#080808", border: `1px solid #1a1a1a`, paddingTop: 3 }}
+          className="rounded-lg px-5 py-3 sm:py-5 space-y-3 min-w-[220px] sm:max-w-[220px] mt-[10px] sm:mt-0"
+          style={{
+            background: "linear-gradient(135deg, #002a10 0%, #00150a 100%)",
+            border: "1px solid #0f5a2a",
+            paddingTop: 3,
+          }}
         >
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-white/60 mb-1">Claim & Burn</p>
             <p className="text-xs" style={{ color: TEXT_DIM }}>
-              No owner, no admin, no pause — permissionless hyperstructure
+              Everyone can claim the fees at any moment. No owner, no admin, no pause — permissionless hyperstructure
             </p>
           </div>
           <button
@@ -2592,7 +2596,7 @@ const Home: NextPage = () => {
 
   // ── Chart controls ───────────────────────────────────────────────────────
   const [chartView, setChartView] = useState<"all" | "strategic">("all");
-  const [chartRange, setChartRange] = useState<"30d" | "max">("max");
+  const [chartRange, setChartRange] = useState<"7d" | "30d" | "90d" | "max">("max");
   const [chartRangeOpen, setChartRangeOpen] = useState(false);
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
 
@@ -2618,7 +2622,7 @@ const Home: NextPage = () => {
   // Filter chart data by time range
   const filteredChartData = useMemo(() => {
     if (chartRange === "max" || chartData.length === 0) return chartData;
-    const days = 30;
+    const days = chartRange === "7d" ? 7 : chartRange === "30d" ? 30 : 90;
     // Keep last N entries + "Today"
     const total = chartData.length;
     const start = Math.max(0, total - days - 1);
@@ -2785,7 +2789,7 @@ const Home: NextPage = () => {
   };
 
   return (
-    <div className="flex flex-col items-center grow pt-0 sm:pt-6 pb-12" style={{ background: "#000" }}>
+    <div className="flex flex-col items-center grow pb-12" style={{ background: "#000", paddingTop: 10 }}>
       {/* Header — hidden on mobile (shown in nav bar), visible on desktop */}
       <div className="hidden sm:block text-center px-4 mb-8">
         <h1 className="text-4xl font-bold mb-1 text-white tracking-tight">₸USD Treasury</h1>
@@ -2798,14 +2802,14 @@ const Home: NextPage = () => {
       <div className="max-w-4xl w-full px-4 mb-8">
         <div
           className="rounded-2xl p-8 max-w-2xl w-full text-center mx-auto"
-          style={{ background: CARD_BG, border: `1px solid ${GOLD}22` }}
+          style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
         >
           <p className="text-xs uppercase tracking-widest mb-2" style={{ color: GOLD }}>
             Managed Funds
           </p>
           <p className="text-5xl font-bold text-white mt-2">{fmtUsd(totalManagedUsd)}</p>
           <p className="text-xs mt-3" style={{ color: TEXT_DIM }}>
-            Total USD value of all tokens held in the Treasury contract
+            Value of all tokens held in the treasury
           </p>
         </div>
       </div>
@@ -2842,10 +2846,6 @@ const Home: NextPage = () => {
             border: "1px solid #0f5a2a",
           }}
         >
-          {/* No-sell icon — desktop only */}
-          <div className="hidden sm:block shrink-0 text-3xl" style={{ lineHeight: 1 }}>
-            🚫
-          </div>
           {/* Text */}
           <div className="flex-1 min-w-0">
             <div className="text-xs sm:text-sm" style={{ color: "#2cab6f" }}>
@@ -2897,9 +2897,9 @@ const Home: NextPage = () => {
             style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
           >
             <div className="overflow-x-auto">
-              <table className="table table-xs sm:table-sm w-full" style={{ color: "#e8e8e8" }}>
+              <table className="table table-xs sm:table-sm w-full strat-table" style={{ color: "#e8e8e8" }}>
                 <thead>
-                  <tr style={{ borderBottom: `1px solid ${CARD_BORDER}` }}>
+                  <tr style={{ borderBottom: `1px solid ${CARD_BORDER}`, height: "2.5rem" }}>
                     <th
                       className="text-[10px] sm:text-xs uppercase tracking-wider"
                       style={{ color: TEXT_MUTED, background: "transparent" }}
@@ -3076,7 +3076,10 @@ const Home: NextPage = () => {
                   </div>
                 ) : null;
               })()}
-            <p className="sm:hidden px-4 pb-3 text-[10px]" style={{ color: TEXT_DIM }}>
+            <p
+              className="sm:hidden px-4 text-[10px]"
+              style={{ color: TEXT_DIM, margin: "0.55rem 0", paddingBottom: 0 }}
+            >
               Tap amount to see USD value and Entry for purchase price
             </p>
           </div>
@@ -3120,7 +3123,7 @@ const Home: NextPage = () => {
                     color: "#fff",
                   }}
                 >
-                  {chartRange === "max" ? "Max" : "30D"}
+                  {chartRange === "max" ? "Max" : chartRange.toUpperCase()}
                   <svg
                     width="10"
                     height="10"
@@ -3143,7 +3146,7 @@ const Home: NextPage = () => {
                     className="absolute right-0 mt-1 rounded-lg overflow-hidden z-10"
                     style={{ background: "#1c1c1c", border: "1px solid #333", minWidth: 70 }}
                   >
-                    {(["30d", "max"] as const).map(r => (
+                    {(["7d", "30d", "90d", "max"] as const).map(r => (
                       <button
                         key={r}
                         onClick={() => {
@@ -3156,7 +3159,7 @@ const Home: NextPage = () => {
                           color: chartRange === r ? "#fff" : TEXT_MUTED,
                         }}
                       >
-                        {r === "max" ? "Max" : "30D"}
+                        {r === "max" ? "Max" : r.toUpperCase()}
                       </button>
                     ))}
                   </div>
@@ -3270,7 +3273,7 @@ const Home: NextPage = () => {
 
       {/* BurnEngine */}
       <div className="max-w-4xl w-full px-4 mb-8">
-        <SectionTitle>BurnEngine</SectionTitle>
+        <SectionTitle>Burn Engine</SectionTitle>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Card 1: Total Burned */}
           <StatCard
@@ -3348,9 +3351,9 @@ const Home: NextPage = () => {
 
           {/* Table */}
           <div className="overflow-x-auto">
-            <table className="table table-xs sm:table-sm" style={{ color: "#e8e8e8" }}>
+            <table className="table table-xs sm:table-sm ops-table" style={{ color: "#e8e8e8" }}>
               <thead>
-                <tr style={{ borderBottom: `1px solid ${CARD_BORDER}` }}>
+                <tr style={{ borderBottom: `1px solid ${CARD_BORDER}`, height: "2.5rem" }}>
                   <th
                     className="text-[10px] sm:text-xs uppercase tracking-wider"
                     style={{ color: TEXT_MUTED, background: "transparent" }}
@@ -3520,7 +3523,7 @@ const Home: NextPage = () => {
                 </div>
               );
             })()}
-          <p className="sm:hidden px-4 pb-3 text-[10px]" style={{ color: TEXT_DIM }}>
+          <p className="sm:hidden px-4 text-[10px]" style={{ color: TEXT_DIM, margin: "0.55rem 0", marginBottom: 0 }}>
             Tap amount to see USD value
           </p>
         </div>

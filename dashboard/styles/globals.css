@@ -128,6 +128,18 @@
   text-decoration: underline;
 }
 
+/* Tables: gap between header and first data row, last row and border */
+.strat-table tbody tr:first-child td,
+.ops-table tbody tr:first-child td {
+  padding-top: 0.55rem;
+}
+@media (max-width: 639px) {
+  .ops-table tbody tr:last-child td,
+  .strat-table tbody tr:last-child td {
+    padding-bottom: 0.55rem;
+  }
+}
+
 /* Force Address component inside contracts list to match label font */
 .hide-address-avatar a,
 .hide-address-avatar span {
@@ -139,7 +151,7 @@
 @media (max-width: 639px) {
   .stat-card-mobile {
     background: #0c0c0c !important;
-    border-color: rgba(67, 227, 151, 0.13) !important;
+    border: 1px solid #0f5a2a !important;
   }
 }
 
@@ -154,6 +166,9 @@
 /* Re-enable only the borders we actually want */
 .tusd-header .tusd-btn-outline {
   border: 1.5px solid #43e397 !important;
+}
+.tusd-header .connect-wallet-btn {
+  border: 2px solid #43e397 !important;
 }
 .tusd-header .tusd-divider-line {
   border: none !important;
