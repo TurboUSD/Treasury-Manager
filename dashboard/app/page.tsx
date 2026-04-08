@@ -5,9 +5,9 @@ import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Address } from "@scaffold-ui/components";
 import type { NextPage } from "next";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { formatEther, formatUnits, parseEther, parseUnits } from "viem";
+import { parseEther, parseUnits } from "viem";
 import { base } from "viem/chains";
-import { useAccount, usePublicClient, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 
 // ── Contract Addresses ─────────────────────────────────────────────────────
 const TREASURY_V1 = "0x3dbF93D110C677A1c063A600cb42940262f3BBd6" as const;
@@ -1881,322 +1881,125 @@ const Home: NextPage = () => {
   } | null>(null);
   const { address: connectedAddress } = useAccount();
 
-  // ── Dynamic owner & operator reads (static — 24h cache) ──
-  const { data: ownerAddr } = useReadContract({
-    address: ACTIVE_TREASURY as `0x${string}`,
-    abi: treasuryV2Abi,
-    functionName: "owner",
-    chainId: base.id,
-    query: { staleTime: STALE_STATIC },
-  });
-  const { data: operatorAddr } = useReadContract({
-    address: ACTIVE_TREASURY as `0x${string}`,
-    abi: treasuryV2Abi,
-    functionName: "authorizedOperator",
-    chainId: base.id,
-    query: { staleTime: STALE_STATIC },
-  });
+  // ── Supabase-backed data fetch (replaces all useReadContract hooks) ──
+  type ApiData = {
+    wethPriceUsd: number;
+    tusdPriceUsd: number;
+    tusdBalNum: number;
+    wethBalNum: number;
+    usdcBalNum: number;
+    tusdSupplyNum: number;
+    tusdBurnedNum: number;
+    tusdStakedNum: number;
+    pendingTusd: number;
+    pendingWeth: number;
+    engineBurned: number;
+    engineCycles: number;
+    engineLastCycleTs: number | null;
+    ownerAddr: string | null;
+    operatorAddr: string | null;
+    strategicRows: {
+      ticker: string;
+      address: string;
+      isV4: boolean;
+      balance: number;
+      currentPrice: number;
+      valueUsd: number;
+    }[];
+    stratPrices: Record<string, number>;
+    stratBalances: Record<string, number>;
+    strategicTotalUsd: number;
+    totalManagedUsd: number;
+    chartData: {
+      date: string;
+      dateRaw?: string;
+      tusd: number;
+      weth: number;
+      usdc: number;
+      strategic: number;
+      [key: string]: unknown;
+    }[];
+    operations: {
+      id: number;
+      op_type: string;
+      amount_raw: string;
+      token_address: string;
+      weth_price_usd: number;
+      token_price_usd: number;
+      tx_hash: string;
+      block_number: number;
+      date_utc: string;
+      date_madrid: string;
+      comment: string;
+      buy_amount: number;
+      buy_currency: string;
+      sell_amount: number;
+      sell_currency: string;
+    }[];
+  };
+
+  const [apiData, setApiData] = useState<ApiData | null>(null);
+  const [apiLoading, setApiLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchData = async () => {
+      try {
+        const res = await fetch("/api/treasury-data");
+        if (!res.ok) throw new Error(`API ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) {
+          setApiData(data);
+          setApiLoading(false);
+        }
+      } catch (e) {
+        console.error("Failed to fetch treasury data:", e);
+        if (!cancelled) setApiLoading(false);
+      }
+    };
+    fetchData();
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchData, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Destructure API data with fallbacks
+  const wethPriceUsd = apiData?.wethPriceUsd ?? 0;
+  const tusdPriceUsd = apiData?.tusdPriceUsd ?? 0;
+  const tusdBalNum = apiData?.tusdBalNum ?? 0;
+  const wethBalNum = apiData?.wethBalNum ?? 0;
+  const usdcBalNum = apiData?.usdcBalNum ?? 0;
+  const tusdSupplyNum = apiData?.tusdSupplyNum ?? 0;
+  const tusdBurnedNum = apiData?.tusdBurnedNum ?? 0;
+  const tusdStakedNum = apiData?.tusdStakedNum ?? 0;
+  const pendingTusd = apiData?.pendingTusd ?? 0;
+  const pendingWeth = apiData?.pendingWeth ?? 0;
+  const engineBurned = apiData?.engineBurned ?? 0;
+  const engineCycles = apiData?.engineCycles ?? 0;
+  const engineLastCycle = apiData?.engineLastCycleTs ? new Date(apiData.engineLastCycleTs * 1000) : null;
+  const ownerAddr = apiData?.ownerAddr ?? null;
+  const operatorAddr = apiData?.operatorAddr ?? null;
+
   const isOwner = !!(
     connectedAddress &&
     ownerAddr &&
-    connectedAddress.toLowerCase() === (ownerAddr as string).toLowerCase()
+    connectedAddress.toLowerCase() === ownerAddr.toLowerCase()
   );
 
-  // ── Pool prices (slow — 5min cache) ──
-  const { data: usdcWethSlot0 } = useReadContract({
-    address: USDC_WETH_POOL,
-    abi: poolAbi,
-    functionName: "slot0",
-    chainId: base.id,
-    query: { staleTime: STALE_SLOW },
-  });
-  const { data: tusdPoolSlot0 } = useReadContract({
-    address: TUSD_POOL,
-    abi: poolAbi,
-    functionName: "slot0",
-    chainId: base.id,
-    query: { staleTime: STALE_SLOW },
-  });
+  // Prices now come from API (see destructured values above)
 
-  const wethPriceUsd = usdcWethSlot0 ? calcWethPriceUsd(usdcWethSlot0[0]) : 0;
-  const tusdPriceUsd = tusdPoolSlot0 ? calcTusdPriceUsd(tusdPoolSlot0[0], wethPriceUsd) : 0;
-
-  // ── Treasury balances (medium — 1min cache) ──
-  const { data: tusdBal } = useReadContract({
-    address: TUSD,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
-    query: { staleTime: STALE_MED },
-  });
-  const { data: wethBal } = useReadContract({
-    address: WETH_ADDR,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
-    query: { staleTime: STALE_MED },
-  });
-  const { data: usdcBal } = useReadContract({
-    address: USDC_ADDR,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
-    query: { staleTime: STALE_MED },
-  });
+  // Balances now come from API (see destructured values above)
 
   // ── TUSD locked in staking contract (medium — 1min cache) ──
-  const { data: tusdStakedBal } = useReadContract({
-    address: TUSD,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [STAKING_CONTRACT],
-    chainId: base.id,
-    query: { staleTime: STALE_MED },
-  });
-
-  // ── Supply & burns (slow — 5min cache) ──
-  const { data: tusdSupply } = useReadContract({
-    address: TUSD,
-    abi: erc20Abi,
-    functionName: "totalSupply",
-    chainId: base.id,
-    query: { staleTime: STALE_SLOW },
-  });
-  const { data: tusdBurned } = useReadContract({
-    address: TUSD,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [DEAD],
-    chainId: base.id,
-    query: { staleTime: STALE_SLOW },
-  });
-
-  // ── Burn engine status (slow — 5min cache) ──
-  const { data: burnStatus } = useReadContract({
-    address: BURN_ENGINE,
-    abi: burnEngineAbi,
-    functionName: "getStatus",
-    chainId: base.id,
-    query: { staleTime: STALE_SLOW },
-  });
-
-  // ── Strategic token balances (medium — 1min cache) ──
-  const { data: bnkrBal } = useReadContract({
-    address: "0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3b",
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
-    query: { staleTime: STALE_MED },
-  });
-  const { data: drbBal } = useReadContract({
-    address: "0x3ec2156D4c0A9CBdAB4a016633b7BcF6a8d68Ea2",
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
-    query: { staleTime: STALE_MED },
-  });
-  const { data: clankerBal } = useReadContract({
-    address: "0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb",
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
-    query: { staleTime: STALE_MED },
-  });
-  const { data: kellyBal } = useReadContract({
-    address: "0x50D2280441372486BeecdD328c1854743EBaCb07",
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
-    query: { staleTime: STALE_MED },
-  });
-  const { data: clawdBal } = useReadContract({
-    address: "0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07",
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
-    query: { staleTime: STALE_MED },
-  });
-  const { data: junoBal } = useReadContract({
-    address: "0x4E6c9f48f73E54EE5F3AB7e2992B2d733D0d0b07",
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
-    query: { staleTime: STALE_MED },
-  });
-  const { data: felixBal } = useReadContract({
-    address: "0xf30Bf00edd0C22db54C9274B90D2A4C21FC09b07",
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [ACTIVE_TREASURY],
-    chainId: base.id,
-    query: { staleTime: STALE_MED },
-  });
-
-  // ── Pending fees (slow — 5min cache) ──
-  const { data: legacyTusdPending } = useReadContract({
-    address: TUSD,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [LEGACY_FEE_SOURCE],
-    chainId: base.id,
-    query: { staleTime: STALE_SLOW },
-  });
-  const { data: lpTusdPending } = useReadContract({
-    address: TUSD,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [LP_FEE_SOURCE],
-    chainId: base.id,
-    query: { staleTime: STALE_SLOW },
-  });
-  const { data: lpWethPending } = useReadContract({
-    address: WETH_ADDR,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [LP_FEE_SOURCE],
-    chainId: base.id,
-    query: { staleTime: STALE_SLOW },
-  });
-
-  // ── V3 strategic token pool prices (3 fixed reads) ──
-  const { data: bnkrSlot0 } = useReadContract({
-    address: "0xAEC085E5A5CE8d96A7bDd3eB3A62445d4f6CE703",
-    abi: poolAbi,
-    functionName: "slot0",
-    chainId: base.id,
-    query: { staleTime: STALE_SLOW },
-  });
-  const { data: drbSlot0 } = useReadContract({
-    address: "0x5116773e18A9C7bB03EBB961b38678E45E238923",
-    abi: poolAbi,
-    functionName: "slot0",
-    chainId: base.id,
-    query: { staleTime: STALE_SLOW },
-  });
-  const { data: clankerSlot0 } = useReadContract({
-    address: "0xC1a6FBeDAe68E1472DbB91FE29B51F7a0Bd44F97",
-    abi: poolAbi,
-    functionName: "slot0",
-    chainId: base.id,
-    query: { staleTime: STALE_SLOW },
-  });
-
-  // ── V4 strategic token pool prices via StateView.getSlot0(poolId) ──
-  const { data: kellySlot0 } = useReadContract({
-    address: STATE_VIEW,
-    abi: stateViewAbi,
-    functionName: "getSlot0",
-    args: ["0x7EAC33D5641697366EAEC3234147FD98BA25F01ACCA66A51A48BD129FC532145"],
-    chainId: base.id,
-    query: { staleTime: STALE_SLOW },
-  });
-  const { data: clawdSlot0 } = useReadContract({
-    address: STATE_VIEW,
-    abi: stateViewAbi,
-    functionName: "getSlot0",
-    args: ["0x9FD58E73D8047CB14AC540ACD141D3FC1A41FB6252D674B730FAF62FE24AA8CE"],
-    chainId: base.id,
-    query: { staleTime: STALE_SLOW },
-  });
-  const { data: junoSlot0 } = useReadContract({
-    address: STATE_VIEW,
-    abi: stateViewAbi,
-    functionName: "getSlot0",
-    args: ["0x1635213E2B19E459A4132DF40011638B65AE7510A35D6A88C47EBF94912C7F2E"],
-    chainId: base.id,
-    query: { staleTime: STALE_SLOW },
-  });
-  const { data: felixSlot0 } = useReadContract({
-    address: STATE_VIEW,
-    abi: stateViewAbi,
-    functionName: "getSlot0",
-    args: ["0x6E19027912DB90892200A2B08C514921917BC55D7291EC878AA382C193B50084"],
-    chainId: base.id,
-    query: { staleTime: STALE_SLOW },
-  });
-
-  const publicClient = usePublicClient({ chainId: base.id });
-
-  // ── On-chain StrategicBuy events — auto-discovers ALL buys, no manual maintenance ──
-  type StrategicBuyEvent = {
-    token: string;
-    wethSpent: number;
-    tokenReceived: number;
-    txHash: string;
-    blockNumber: bigint;
-    date: string;
-  };
-  const [onChainBuys, setOnChainBuys] = useState<StrategicBuyEvent[]>([]);
-
-  useEffect(() => {
-    if (!publicClient) return;
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const currentBlock = await publicClient.getBlockNumber();
-        const now = Math.floor(Date.now() / 1000);
-        // Contract was deployed recently — scan from ~60 days back (generous range)
-        const fromBlock = currentBlock > 2_600_000n ? currentBlock - 2_600_000n : 0n;
-
-        const logs = await publicClient.getLogs({
-          address: ACTIVE_TREASURY as `0x${string}`,
-          event: strategicBuyEventAbi,
-          fromBlock,
-          toBlock: currentBlock,
-        });
-
-        if (cancelled) return;
-        const buys: StrategicBuyEvent[] = logs.map(l => {
-          // Estimate date from block number (~2s blocks on Base)
-          const blockDiff = Number(currentBlock - l.blockNumber);
-          const ts = now - blockDiff * 2;
-          const date = new Date(ts * 1000).toISOString().slice(0, 10);
-          return {
-            token: (l.args as { token: string }).token.toLowerCase(),
-            wethSpent: Number(formatEther((l.args as { wethSpent: bigint }).wethSpent)),
-            tokenReceived: Number(formatEther((l.args as { tokenReceived: bigint }).tokenReceived)),
-            txHash: l.transactionHash,
-            blockNumber: l.blockNumber,
-            date,
-          };
-        });
-        setOnChainBuys(buys);
-      } catch (e) {
-        console.error("Failed to fetch StrategicBuy events:", e);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [publicClient]);
-
-  // ── Computed values ──
-  const tusdBalNum = tusdBal ? Number(formatEther(tusdBal)) : 0;
-  const wethBalNum = wethBal ? Number(formatEther(wethBal)) : 0;
-  const usdcBalNum = usdcBal ? Number(formatUnits(usdcBal, 6)) : 0;
-  const tusdSupplyNum = tusdSupply ? Number(formatEther(tusdSupply)) : 0;
-  const tusdBurnedNum = tusdBurned ? Number(formatEther(tusdBurned)) : 0;
-  const tusdStakedNum = tusdStakedBal ? Number(formatEther(tusdStakedBal)) : 0;
-
+  // ── Computed values from API data ──
   const tusdBalUsd = tusdBalNum * tusdPriceUsd;
   const wethBalUsd = wethBalNum * wethPriceUsd;
   const usdcBalUsd = usdcBalNum;
 
-  // totalManagedUsd includes strategic token holdings (computed after strategicRows below)
-  // We define the base first, then add strategic total after it's computed
   const baseManagedUsd = tusdBalUsd + wethBalUsd + usdcBalUsd;
-
   const burnPct = tusdSupplyNum > 0 ? (tusdBurnedNum / tusdSupplyNum) * 100 : 0;
   const burnUsd = tusdBurnedNum * tusdPriceUsd;
 
@@ -2204,57 +2007,53 @@ const Home: NextPage = () => {
   const buybackPct = tusdSupplyNum > 0 ? (totalBuybackTusd / tusdSupplyNum) * 100 : 0;
   const buybackUsd = totalBuybackTusd * tusdPriceUsd;
 
-  // Total ₸USD locked = treasury balance + staking contract balance
   const totalLockedTusd = tusdBalNum + tusdStakedNum;
 
-  const engineBurned = burnStatus ? Number(formatEther(burnStatus[0])) : 0;
-  const engineCycles = burnStatus ? Number(burnStatus[2]) : 0;
-  const engineLastCycle = burnStatus && burnStatus[1] > 0n ? new Date(Number(burnStatus[1]) * 1000) : null;
-
-  // Pending fees
-  const pendingTusd =
-    (legacyTusdPending ? Number(formatEther(legacyTusdPending)) : 0) +
-    (lpTusdPending ? Number(formatEther(lpTusdPending)) : 0);
-  const pendingWeth = lpWethPending ? Number(formatEther(lpWethPending)) : 0;
   const pendingTusdUsd = pendingTusd * tusdPriceUsd;
   const pendingWethUsd = pendingWeth * wethPriceUsd;
   const pendingTotalUsd = pendingTusdUsd + pendingWethUsd;
 
-  // Total claimed via BurnEngine (sum of all BurnEngine entries from HISTORICAL_OPS_RAW)
   const totalClaimedTusd = HISTORICAL_OPS_RAW.filter(op => op.type === "BurnEngine").reduce(
     (sum, op) => sum + op.tusdAmount,
     0,
   );
   const totalClaimedTusdUsd = totalClaimedTusd * tusdPriceUsd;
-  // WETH claimed historically — update when tracked in HISTORICAL_OPS_RAW
   const totalClaimedWeth = 0;
 
-  // ── Strategic token computed rows ──
-  const bnkrPrice = bnkrSlot0 ? calcV3TokenPriceUsd(bnkrSlot0[0], wethPriceUsd) : 0;
-  const drbPrice = drbSlot0 ? calcV3TokenPriceUsd(drbSlot0[0], wethPriceUsd) : 0;
-  const clankerPrice = clankerSlot0 ? calcV3TokenPriceUsd(clankerSlot0[0], wethPriceUsd) : 0;
-  const kellyPrice = kellySlot0 ? calcV4TokenPriceUsd(kellySlot0[0], wethPriceUsd) : 0;
-  const clawdPrice = clawdSlot0 ? calcV4TokenPriceUsd(clawdSlot0[0], wethPriceUsd) : 0;
-  const junoPrice = junoSlot0 ? calcV4TokenPriceUsd(junoSlot0[0], wethPriceUsd) : 0;
-  const felixPrice = felixSlot0 ? calcV4TokenPriceUsd(felixSlot0[0], wethPriceUsd) : 0;
-
+  // ── Strategic token rows from API ──
   type StrategicRow = {
     preset: StrategicPreset;
     balance: number;
     currentPrice: number;
     valueUsd: number;
     roi: number | null;
-    /** Buy price USD derived from operations (weighted average if multiple buys) */
     computedBuyPrice: number;
-    /** Date of most recent StrategicBuy/StrategicSell operation for this token */
     lastOpDate: string;
-    /** Index in HISTORICAL_OPS_RAW of the most recent op (for tie-breaking same-date sort) */
     lastOpIdx: number;
-    /** Tx hash of the first buy (for the Tx link) */
     firstBuyTxHash: string;
   };
 
-  // Build buy-price data from on-chain StrategicBuy events — fully automatic, no manual maintenance
+  // Build buy-price data from on-chain operations stored in Supabase
+  const onChainBuys = useMemo(() => {
+    if (!apiData?.operations) return [];
+    return apiData.operations
+      .filter(op => op.op_type === "StrategicBuy")
+      .map(op => ({
+        token: (op.token_address || "").toLowerCase(),
+        wethSpent: op.sell_amount || 0,
+        tokenReceived: op.buy_amount || 0,
+        txHash: op.tx_hash || "",
+        blockNumber: BigInt(op.block_number || 0),
+        date: op.date_utc ? op.date_utc.slice(0, 10) : "",
+      }));
+  }, [apiData?.operations]);
+
+  const tokenToTicker = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const p of STRATEGIC_PRESETS) m[p.token.toLowerCase()] = p.ticker;
+    return m;
+  }, []);
+
   const buyDataByToken = useMemo(() => {
     const m: Record<
       string,
@@ -2296,134 +2095,43 @@ const Home: NextPage = () => {
     return m;
   }, [onChainBuys]);
 
-  const strategicRows: StrategicRow[] = [
-    {
-      preset: STRATEGIC_PRESETS[0],
-      balance: bnkrBal ? Number(formatEther(bnkrBal)) : 0,
-      currentPrice: bnkrPrice,
-      valueUsd: 0,
-      roi: null,
-      computedBuyPrice: 0,
-      lastOpDate: "",
-      lastOpIdx: -1,
-      firstBuyTxHash: "",
-    },
-    {
-      preset: STRATEGIC_PRESETS[1],
-      balance: drbBal ? Number(formatEther(drbBal)) : 0,
-      currentPrice: drbPrice,
-      valueUsd: 0,
-      roi: null,
-      computedBuyPrice: 0,
-      lastOpDate: "",
-      lastOpIdx: -1,
-      firstBuyTxHash: "",
-    },
-    {
-      preset: STRATEGIC_PRESETS[2],
-      balance: clankerBal ? Number(formatEther(clankerBal)) : 0,
-      currentPrice: clankerPrice,
-      valueUsd: 0,
-      roi: null,
-      computedBuyPrice: 0,
-      lastOpDate: "",
-      lastOpIdx: -1,
-      firstBuyTxHash: "",
-    },
-    {
-      preset: STRATEGIC_PRESETS[3],
-      balance: kellyBal ? Number(formatEther(kellyBal)) : 0,
-      currentPrice: kellyPrice,
-      valueUsd: 0,
-      roi: null,
-      computedBuyPrice: 0,
-      lastOpDate: "",
-      lastOpIdx: -1,
-      firstBuyTxHash: "",
-    },
-    {
-      preset: STRATEGIC_PRESETS[4],
-      balance: clawdBal ? Number(formatEther(clawdBal)) : 0,
-      currentPrice: clawdPrice,
-      valueUsd: 0,
-      roi: null,
-      computedBuyPrice: 0,
-      lastOpDate: "",
-      lastOpIdx: -1,
-      firstBuyTxHash: "",
-    },
-    {
-      preset: STRATEGIC_PRESETS[5],
-      balance: junoBal ? Number(formatEther(junoBal)) : 0,
-      currentPrice: junoPrice,
-      valueUsd: 0,
-      roi: null,
-      computedBuyPrice: 0,
-      lastOpDate: "",
-      lastOpIdx: -1,
-      firstBuyTxHash: "",
-    },
-    {
-      preset: STRATEGIC_PRESETS[6],
-      balance: felixBal ? Number(formatEther(felixBal)) : 0,
-      currentPrice: felixPrice,
-      valueUsd: 0,
-      roi: null,
-      computedBuyPrice: 0,
-      lastOpDate: "",
-      lastOpIdx: -1,
-      firstBuyTxHash: "",
-    },
-  ]
-    .map(row => {
-      const valueUsd = row.balance * row.currentPrice;
-      // Compute buy price from operations data (weighted average WETH cost → USD)
-      const bd = buyDataByToken[row.preset.token.toLowerCase()];
+  // Map API strategic rows to the StrategicRow type the rendering expects
+  const apiStratRows = apiData?.strategicRows ?? [];
+  const strategicRows: StrategicRow[] = useMemo(() => {
+    return STRATEGIC_PRESETS.map(preset => {
+      const apiRow = apiStratRows.find(r => r.ticker === preset.ticker);
+      const balance = apiRow?.balance ?? 0;
+      const currentPrice = apiRow?.currentPrice ?? 0;
+      const valueUsd = apiRow?.valueUsd ?? 0;
+
+      const bd = buyDataByToken[preset.token.toLowerCase()];
       let buyPrice: number;
       let lastOpDate: string;
       let lastOpIdx: number;
       let firstBuyTxHash: string;
       if (bd && bd.totalTokens > 0) {
-        // Price per token in WETH, then convert to USD with current WETH price
         buyPrice = (bd.totalWeth / bd.totalTokens) * wethPriceUsd;
-        // Use block number as ordering key (higher = more recent)
         lastOpIdx = Number(bd.lastBlockNum);
-        lastOpDate = bd.firstDate; // date of first buy (entry date)
+        lastOpDate = bd.firstDate;
         firstBuyTxHash = bd.firstTx;
       } else {
-        // Fallback to preset if no on-chain events found yet
-        buyPrice = Number(row.preset.buyPriceUsd) || 0;
-        lastOpDate = row.preset.entryDate;
+        buyPrice = Number(preset.buyPriceUsd) || 0;
+        lastOpDate = preset.entryDate;
         lastOpIdx = -1;
-        firstBuyTxHash = row.preset.entryTxHash;
+        firstBuyTxHash = preset.entryTxHash;
       }
-      const roi = row.currentPrice > 0 && buyPrice > 0 ? ((row.currentPrice - buyPrice) / buyPrice) * 100 : null;
-      return { ...row, valueUsd, roi, computedBuyPrice: buyPrice, lastOpDate, lastOpIdx, firstBuyTxHash };
+      const roi = currentPrice > 0 && buyPrice > 0 ? ((currentPrice - buyPrice) / buyPrice) * 100 : null;
+      return { preset, balance, currentPrice, valueUsd, roi, computedBuyPrice: buyPrice, lastOpDate, lastOpIdx, firstBuyTxHash };
     })
-    .filter(row => row.balance > 0)
-    // Sort by most recent operation first (highest block number = most recent)
-    .sort((a, b) => b.lastOpIdx - a.lastOpIdx);
+      .filter(row => row.balance > 0)
+      .sort((a, b) => b.lastOpIdx - a.lastOpIdx);
+  }, [apiStratRows, buyDataByToken, wethPriceUsd]);
 
   const hasStrategicTokens = strategicRows.length > 0;
+  const strategicTotalUsd = apiData?.strategicTotalUsd ?? strategicRows.reduce((s, r) => s + r.valueUsd, 0);
+  const totalManagedUsd = apiData?.totalManagedUsd ?? (baseManagedUsd + strategicTotalUsd);
 
-  // ── Strategic token price map (for chart USD conversion) ──
-  const strategicPriceMap = useMemo(() => {
-    const m: Record<string, number> = {};
-    m[STRATEGIC_PRESETS[0].token.toLowerCase()] = bnkrPrice;
-    m[STRATEGIC_PRESETS[1].token.toLowerCase()] = drbPrice;
-    m[STRATEGIC_PRESETS[2].token.toLowerCase()] = clankerPrice;
-    m[STRATEGIC_PRESETS[3].token.toLowerCase()] = kellyPrice;
-    m[STRATEGIC_PRESETS[4].token.toLowerCase()] = clawdPrice;
-    m[STRATEGIC_PRESETS[5].token.toLowerCase()] = junoPrice;
-    m[STRATEGIC_PRESETS[6].token.toLowerCase()] = felixPrice;
-    return m;
-  }, [bnkrPrice, drbPrice, clankerPrice, kellyPrice, clawdPrice, junoPrice, felixPrice]);
-
-  const strategicTotalUsd = strategicRows.reduce((sum, r) => sum + r.valueUsd, 0);
-  const totalManagedUsd = baseManagedUsd + strategicTotalUsd;
-
-  // ── Chart data: on-chain Transfer events → stacked daily snapshots ──
-  // Historical snapshots are fetched once (async), "Today" is appended reactively from live balances.
+  // ── Chart data from API (already computed server-side) ──
   type DailySnapshot = {
     date: string;
     dateRaw?: string;
@@ -2433,166 +2141,10 @@ const Home: NextPage = () => {
     strategic: number;
     [key: `strat_${string}`]: number;
   };
-  const [historicalSnapshots, setHistoricalSnapshots] = useState<DailySnapshot[]>([]);
-  const [historyFetched, setHistoryFetched] = useState(false);
 
-  // Reverse lookup: token address → ticker (needed by chart snapshot builder)
-  const tokenToTicker = useMemo(() => {
-    const m: Record<string, string> = {};
-    for (const p of STRATEGIC_PRESETS) m[p.token.toLowerCase()] = p.ticker;
-    return m;
-  }, []);
-
-  // Fetch historical transfer events only once (or when prices/client change)
-  useEffect(() => {
-    if (!publicClient || wethPriceUsd === 0) return;
-    let cancelled = false;
-
-    // Token → category mapping
-    const tokenInfo: Record<string, { cat: "tusd" | "weth" | "usdc" | "strategic"; dec: number }> = {};
-    tokenInfo[TUSD.toLowerCase()] = { cat: "tusd", dec: 18 };
-    tokenInfo[WETH_ADDR.toLowerCase()] = { cat: "weth", dec: 18 };
-    tokenInfo[USDC_ADDR.toLowerCase()] = { cat: "usdc", dec: 6 };
-    for (const p of STRATEGIC_PRESETS) {
-      tokenInfo[p.token.toLowerCase()] = { cat: "strategic", dec: 18 };
-    }
-    const tokenAddrs = Object.keys(tokenInfo) as `0x${string}`[];
-
-    // All treasury addresses (V1, V2-old, V3-current)
-    const treasuries = [TREASURY_V1, TREASURY_V2_OLDEST, TREASURY_V2_OLD, ACTIVE_TREASURY] as const;
-
-    (async () => {
-      try {
-        const currentBlock = await publicClient.getBlockNumber();
-        const now = Math.floor(Date.now() / 1000);
-        // ~100 days back on Base (2s blocks) — covers 90D filter with margin
-        const startBlock = currentBlock > 4_320_000n ? currentBlock - 4_320_000n : 0n;
-
-        type LogEntry = { block: bigint; token: string; amount: bigint; dir: 1 | -1 };
-        const allLogs: LogEntry[] = [];
-
-        // Core tokens (TUSD, WETH, USDC) — scan all historical treasury addresses
-        const coreTokenAddrs = [TUSD, WETH_ADDR, USDC_ADDR].map(a => a.toLowerCase());
-        const coreAddrSet = new Set(coreTokenAddrs);
-        const coreTokens = tokenAddrs.filter(a => coreAddrSet.has(a.toLowerCase())) as `0x${string}`[];
-
-        // Strategic tokens — only count from the active (current) contract
-        const strategicTokens = tokenAddrs.filter(a => !coreAddrSet.has(a.toLowerCase())) as `0x${string}`[];
-
-        for (const tAddr of treasuries) {
-          // Decide which token set to query for this treasury
-          const tokensForThisTreasury = tAddr === ACTIVE_TREASURY ? tokenAddrs : coreTokens;
-          if (tokensForThisTreasury.length === 0) continue;
-          try {
-            const [inLogs, outLogs] = await Promise.all([
-              publicClient.getLogs({
-                address: tokensForThisTreasury,
-                event: transferEventAbi,
-                args: { to: tAddr },
-                fromBlock: startBlock,
-              }),
-              publicClient.getLogs({
-                address: tokensForThisTreasury,
-                event: transferEventAbi,
-                args: { from: tAddr },
-                fromBlock: startBlock,
-              }),
-            ]);
-            for (const l of inLogs) {
-              if (l.args.value)
-                allLogs.push({ block: l.blockNumber, token: l.address.toLowerCase(), amount: l.args.value, dir: 1 });
-            }
-            for (const l of outLogs) {
-              if (l.args.value)
-                allLogs.push({ block: l.blockNumber, token: l.address.toLowerCase(), amount: l.args.value, dir: -1 });
-            }
-          } catch {
-            // If one treasury range fails, continue with others
-          }
-        }
-        // Suppress unused variable warning
-        void strategicTokens;
-
-        allLogs.sort((a, b) => Number(a.block - b.block));
-
-        // Running per-token balances → daily snapshots
-        const running: Record<string, number> = {};
-        const dailyMap: Record<string, Record<string, number>> = {};
-
-        for (const log of allLogs) {
-          const info = tokenInfo[log.token];
-          if (!info) continue;
-          const val = Number(log.amount) / 10 ** info.dec;
-          running[log.token] = (running[log.token] || 0) + val * log.dir;
-
-          const blockDiff = Number(currentBlock - log.block);
-          const ts = now - blockDiff * 2;
-          const date = new Date(ts * 1000).toISOString().slice(0, 10);
-          dailyMap[date] = { ...running };
-        }
-
-        // Convert to chart format
-        const dates = Object.keys(dailyMap).sort();
-        const snapshots: DailySnapshot[] = dates.map(d => {
-          const bals = dailyMap[d];
-          let tusd = 0,
-            weth = 0,
-            usdc = 0,
-            strategic = 0;
-          const perToken: Record<string, number> = {};
-          for (const [addr, bal] of Object.entries(bals)) {
-            const info = tokenInfo[addr];
-            if (!info) continue;
-            const b = Math.max(0, bal);
-            if (info.cat === "tusd") tusd += b * tusdPriceUsd;
-            else if (info.cat === "weth") weth += b * wethPriceUsd;
-            else if (info.cat === "usdc") usdc += b;
-            else if (info.cat === "strategic") {
-              const usd = b * (strategicPriceMap[addr] || 0);
-              strategic += usd;
-              const ticker = tokenToTicker[addr] || addr.slice(0, 6);
-              perToken[`strat_${ticker}`] = (perToken[`strat_${ticker}`] || 0) + usd;
-            }
-          }
-          return { date: d, dateRaw: d, tusd, weth, usdc, strategic, ...perToken } as DailySnapshot;
-        });
-
-        if (!cancelled) {
-          setHistoricalSnapshots(snapshots);
-          setHistoryFetched(true);
-        }
-      } catch (e) {
-        console.error("Chart event fetch failed:", e);
-        if (!cancelled) {
-          setHistoricalSnapshots([]);
-          setHistoryFetched(true);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [publicClient, wethPriceUsd, tusdPriceUsd, strategicPriceMap]);
-
-  // Combine historical snapshots with live "Today" data reactively
-  // This ensures "Today" always reflects current balances regardless of async fetch timing
-  const chartData = useMemo(() => {
-    const perToken: Record<string, number> = {};
-    for (const r of strategicRows) {
-      perToken[`strat_${r.preset.ticker}`] = r.valueUsd;
-    }
-    const today: DailySnapshot = {
-      date: "Today",
-      tusd: tusdBalUsd,
-      weth: wethBalUsd,
-      usdc: usdcBalUsd,
-      strategic: strategicTotalUsd,
-      ...perToken,
-    } as DailySnapshot;
-    if (!historyFetched) return [];
-    return [...historicalSnapshots, today];
-  }, [historicalSnapshots, historyFetched, tusdBalUsd, wethBalUsd, usdcBalUsd, strategicTotalUsd, strategicRows]);
+  const chartData: DailySnapshot[] = useMemo(() => {
+    return (apiData?.chartData as DailySnapshot[] | undefined) ?? [];
+  }, [apiData?.chartData]);
 
   // ── Chart controls ───────────────────────────────────────────────────────
   const [chartView, setChartView] = useState<"all" | "strategic">("all");
@@ -2899,7 +2451,7 @@ const Home: NextPage = () => {
             <div className="overflow-x-auto">
               <table className="table table-xs sm:table-sm w-full strat-table" style={{ color: "#e8e8e8" }}>
                 <thead>
-                  <tr style={{ borderBottom: `1px solid ${CARD_BORDER}`, height: "2.5rem" }}>
+                  <tr style={{ borderBottom: `1px solid ${CARD_BORDER}`, height: "2.0rem" }}>
                     <th
                       className="text-[10px] sm:text-xs uppercase tracking-wider"
                       style={{ color: TEXT_MUTED, background: "transparent" }}
@@ -3370,7 +2922,7 @@ const Home: NextPage = () => {
           <div className="overflow-x-auto">
             <table className="table table-xs sm:table-sm ops-table" style={{ color: "#e8e8e8" }}>
               <thead>
-                <tr style={{ borderBottom: `1px solid ${CARD_BORDER}`, height: "2.5rem" }}>
+                <tr style={{ borderBottom: `1px solid ${CARD_BORDER}`, height: "2.0rem" }}>
                   <th
                     className="text-[10px] sm:text-xs uppercase tracking-wider"
                     style={{ color: TEXT_MUTED, background: "transparent" }}
@@ -3549,6 +3101,22 @@ const Home: NextPage = () => {
       {/* Owner-only panels */}
       {isOwner && (
         <>
+          {/* Export operations button */}
+          <div className="max-w-4xl w-full px-4 mb-4">
+            <button
+              onClick={() => {
+                window.open("/api/export-operations", "_blank");
+              }}
+              className="btn btn-sm"
+              style={{
+                background: "transparent",
+                border: `1px solid ${GOLD}`,
+                color: GOLD,
+              }}
+            >
+              Export Operations (CoinTracking CSV)
+            </button>
+          </div>
           <CollapsibleSection title="Operator Limits (Owner Only)">
             <OperatorLimitsPanel />
           </CollapsibleSection>
