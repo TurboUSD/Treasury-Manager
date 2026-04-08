@@ -715,7 +715,7 @@ const STALE_MED = 30 * 60 * 1000; // 30min — balances (change only on transact
 // ── Design tokens ─────────────────────────────────────────────────────────
 const GOLD = "#43e397";
 const CARD_BG = "#0c0c0c";
-const CARD_BORDER = "#1c1c1c";
+const CARD_BORDER = "#0f5a2a";
 const TEXT_MUTED = "#a8a8a8";
 const TEXT_DIM = "#888888";
 
@@ -2785,7 +2785,7 @@ const Home: NextPage = () => {
   };
 
   return (
-    <div className="flex flex-col items-center grow pt-6 pb-12" style={{ background: "#000" }}>
+    <div className="flex flex-col items-center grow pt-0 sm:pt-6 pb-12" style={{ background: "#000" }}>
       {/* Header — hidden on mobile (shown in nav bar), visible on desktop */}
       <div className="hidden sm:block text-center px-4 mb-8">
         <h1 className="text-4xl font-bold mb-1 text-white tracking-tight">₸USD Treasury</h1>
@@ -2793,7 +2793,6 @@ const Home: NextPage = () => {
           Operated by AMI · Artificial Monetary Intelligence
         </p>
       </div>
-      <div className="sm:hidden mb-4" />
 
       {/* Hero: Managed Funds */}
       <div className="max-w-4xl w-full px-4 mb-8">
@@ -2835,34 +2834,31 @@ const Home: NextPage = () => {
       </div>
 
       {/* Zero ₸USD Sold Banner */}
-      <div className="max-w-4xl w-full px-4 mb-8">
+      <div className="max-w-4xl w-full px-4 mb-8 sm:flex sm:justify-center">
         <div
-          className="relative rounded-xl overflow-hidden px-5 py-4 flex items-center gap-4"
+          className="relative rounded-xl overflow-hidden px-5 py-4 flex items-center gap-4 sm:gap-5 w-full sm:max-w-[60%]"
           style={{
             background: "linear-gradient(135deg, #002a10 0%, #00150a 100%)",
             border: "1px solid #0f5a2a",
           }}
         >
-          {/* No-sell icon */}
-          <div className="shrink-0 text-3xl" style={{ lineHeight: 1 }}>
+          {/* No-sell icon — desktop only */}
+          <div className="hidden sm:block shrink-0 text-3xl" style={{ lineHeight: 1 }}>
             🚫
           </div>
           {/* Text */}
           <div className="flex-1 min-w-0">
-            <div className="font-bold text-sm sm:text-base" style={{ color: "#43e397" }}>
-              {`$\u20B8USD Sold: Zero. Never.`}
-            </div>
-            <div className="text-xs sm:text-sm mt-0.5" style={{ color: "#2cab6f" }}>
-              No function in the contract to sell {`\u20B8USD`}. Not disabled, not paused — it doesn{"'"}t exist. Fully
+            <div className="text-xs sm:text-sm" style={{ color: "#2cab6f" }}>
+              No function in the contract to sell {`\u20B8USD`}. Not disabled, not paused; it doesn{"'"}t exist. Fully
               verifiable onchain.
             </div>
           </div>
           {/* Big zero */}
           <div className="shrink-0 text-right">
-            <div className="text-3xl sm:text-4xl font-black" style={{ color: "#ef4444", lineHeight: 1 }}>
+            <div className="text-3xl sm:text-4xl font-black" style={{ color: "#43e397", lineHeight: 1 }}>
               0
             </div>
-            <div className="text-[10px] sm:text-xs mt-1 whitespace-nowrap" style={{ color: "#2cab6f" }}>
+            <div className="text-[10px] sm:text-xs mt-1 whitespace-nowrap" style={{ color: "#fff", fontWeight: 800 }}>
               {`\u20B8USD sold \u00B7 ever`}
             </div>
           </div>
