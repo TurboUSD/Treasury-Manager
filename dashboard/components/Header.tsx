@@ -19,6 +19,7 @@ export const menuLinks: HeaderMenuLink[] = [
   { label: "Home", href: "https://turbousd.com", external: true },
   { label: "Dashboard", href: "/" },
   { label: "AMI Overview", href: "https://turbousd.com/ami", external: true },
+  { label: "Get ₸USD", href: "https://turbousd.com/buy", external: true },
 ];
 
 // ── Social icons (SVG inline) ──────────────────────────────────────────────
@@ -167,31 +168,6 @@ export const Header = () => {
               </a>
             ))}
           </div>
-
-          {/* Get ₸USD button — desktop only */}
-          <a
-            href="https://turbousd.com/buy"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hidden lg:inline-block text-xs font-semibold rounded-full px-4 py-1.5 transition-all duration-200 tusd-btn-outline"
-            style={{
-              color: "#43e397",
-              background: "transparent",
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.background = "#43e397";
-              e.currentTarget.style.color = "#000";
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "#43e397";
-            }}
-          >
-            Get ₸USD
-          </a>
-
-          {/* Divider — desktop only */}
-          <div className="hidden lg:block h-5 tusd-divider-line" />
 
           <RainbowKitCustomConnectButton />
           {isLocalNetwork && <FaucetButton />}

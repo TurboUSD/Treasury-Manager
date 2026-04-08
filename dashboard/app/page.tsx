@@ -835,7 +835,7 @@ function LegacyFeeBurnerPanel() {
 
         {/* Right: Claim & Burn card */}
         <div
-          className="rounded-lg px-5 py-3 sm:py-5 space-y-3 min-w-[220px] sm:max-w-[220px] mt-[10px] sm:mt-0"
+          className="rounded-lg px-5 py-3 sm:py-5 space-y-3 min-w-[220px] sm:max-w-[300px] mt-[10px] sm:mt-0"
           style={{
             background: "linear-gradient(135deg, #002a10 0%, #00150a 100%)",
             border: "1px solid #0f5a2a",
@@ -2465,8 +2465,8 @@ const Home: NextPage = () => {
       try {
         const currentBlock = await publicClient.getBlockNumber();
         const now = Math.floor(Date.now() / 1000);
-        // ~30 days back on Base (2s blocks)
-        const startBlock = currentBlock > 1_300_000n ? currentBlock - 1_300_000n : 0n;
+        // ~100 days back on Base (2s blocks) — covers 90D filter with margin
+        const startBlock = currentBlock > 4_320_000n ? currentBlock - 4_320_000n : 0n;
 
         type LogEntry = { block: bigint; token: string; amount: bigint; dir: 1 | -1 };
         const allLogs: LogEntry[] = [];
@@ -2554,7 +2554,7 @@ const Home: NextPage = () => {
               perToken[`strat_${ticker}`] = (perToken[`strat_${ticker}`] || 0) + usd;
             }
           }
-          return { date: d.slice(5), dateRaw: d, tusd, weth, usdc, strategic, ...perToken } as DailySnapshot;
+          return { date: d, dateRaw: d, tusd, weth, usdc, strategic, ...perToken } as DailySnapshot;
         });
 
         if (!cancelled) {
@@ -2619,14 +2619,14 @@ const Home: NextPage = () => {
     });
   };
 
-  // Filter chart data by time range
+  // Filter chart data by time range using actual dates
   const filteredChartData = useMemo(() => {
     if (chartRange === "max" || chartData.length === 0) return chartData;
     const days = chartRange === "7d" ? 7 : chartRange === "30d" ? 30 : 90;
-    // Keep last N entries + "Today"
-    const total = chartData.length;
-    const start = Math.max(0, total - days - 1);
-    return chartData.slice(start);
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    const cutoffStr = cutoff.toISOString().slice(0, 10); // "YYYY-MM-DD"
+    return chartData.filter(d => !d.dateRaw || d.dateRaw >= cutoffStr || d.date === "Today");
   }, [chartData, chartRange]);
 
   // Legend items based on view mode
@@ -3204,7 +3204,17 @@ const Home: NextPage = () => {
                     </linearGradient>
                   ))}
                 </defs>
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#a6a6a6" }} stroke="#1c1c1c" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 11, fill: "#a6a6a6" }}
+                  stroke="#1c1c1c"
+                  tickFormatter={(v: string) => {
+                    if (v === "Today") return "Today";
+                    const parts = v.split("-");
+                    if (parts.length === 3) return `${parts[1]}/${parts[2]}/${parts[0].slice(2)}`;
+                    return v;
+                  }}
+                />
                 <YAxis
                   tickFormatter={(v: number) => fmtUsd(v)}
                   tick={{ fontSize: 11, fill: "#a6a6a6" }}
@@ -3232,7 +3242,14 @@ const Home: NextPage = () => {
                           lineHeight: 1.1,
                         }}
                       >
-                        <div className="font-semibold">{d.date}</div>
+                        <div className="font-semibold">
+                          {d.date === "Today"
+                            ? "Today"
+                            : (() => {
+                                const p = d.date.split("-");
+                                return p.length === 3 ? `${p[1]}/${p[2]}/${p[0]}` : d.date;
+                              })()}
+                        </div>
                         <div className="font-bold" style={{ color: GOLD }}>
                           Total: {fmtUsd(total)}
                         </div>
@@ -3523,7 +3540,7 @@ const Home: NextPage = () => {
                 </div>
               );
             })()}
-          <p className="sm:hidden px-4 text-[10px]" style={{ color: TEXT_DIM, margin: "0.55rem 0", marginBottom: 0 }}>
+          <p className="sm:hidden px-4 text-[10px]" style={{ color: TEXT_DIM, marginTop: 0, marginBottom: "0.55rem" }}>
             Tap amount to see USD value
           </p>
         </div>

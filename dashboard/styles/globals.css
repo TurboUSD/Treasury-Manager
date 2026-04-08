@@ -129,9 +129,11 @@
 }
 
 /* Tables: gap between header and first data row, last row and border */
-.strat-table tbody tr:first-child td,
 .ops-table tbody tr:first-child td {
   padding-top: 0.55rem;
+}
+.strat-table tbody tr:first-child td {
+  padding-top: 0.75rem;
 }
 @media (max-width: 639px) {
   .ops-table tbody tr:last-child td,
