@@ -1989,6 +1989,12 @@ const Home: NextPage = () => {
     connectedAddress.toLowerCase() === ownerAddr.toLowerCase()
   );
 
+  const isOperator = !!(
+    connectedAddress &&
+    operatorAddr &&
+    connectedAddress.toLowerCase() === operatorAddr.toLowerCase()
+  );
+
   // Prices now come from API (see destructured values above)
 
   // Balances now come from API (see destructured values above)
@@ -2935,7 +2941,22 @@ const Home: NextPage = () => {
 
       {/* Operations Table */}
       <div className="max-w-4xl w-full px-4 mb-8">
-        <SectionTitle>Operations</SectionTitle>
+        <div className="flex items-center justify-between mb-0">
+          <SectionTitle>Operations</SectionTitle>
+          {(isOwner || isOperator) && (
+            <button
+              onClick={() => window.open("/api/export-operations", "_blank")}
+              className="btn btn-xs sm:btn-sm"
+              style={{
+                background: "transparent",
+                border: `1px solid ${GOLD}`,
+                color: GOLD,
+              }}
+            >
+              Export Excel
+            </button>
+          )}
+        </div>
         <div
           className="rounded-xl overflow-hidden text-xs sm:text-sm"
           style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
@@ -3156,22 +3177,6 @@ const Home: NextPage = () => {
       {/* Owner-only panels */}
       {isOwner && (
         <>
-          {/* Export operations button */}
-          <div className="max-w-4xl w-full px-4 mb-4">
-            <button
-              onClick={() => {
-                window.open("/api/export-operations", "_blank");
-              }}
-              className="btn btn-sm"
-              style={{
-                background: "transparent",
-                border: `1px solid ${GOLD}`,
-                color: GOLD,
-              }}
-            >
-              Export Operations (CoinTracking Excel)
-            </button>
-          </div>
           <CollapsibleSection title="Operator Limits (Owner Only)">
             <OperatorLimitsPanel />
           </CollapsibleSection>
