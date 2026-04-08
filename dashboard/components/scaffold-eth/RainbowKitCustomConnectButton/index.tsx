@@ -53,7 +53,8 @@ export const RainbowKitCustomConnectButton = () => {
                       (e.currentTarget as HTMLButtonElement).style.color = "#43e397";
                     }}
                   >
-                    Connect Wallet
+                    <span className="hidden sm:inline">Connect Wallet</span>
+                    <span className="sm:hidden">Connect</span>
                   </button>
                 );
               }

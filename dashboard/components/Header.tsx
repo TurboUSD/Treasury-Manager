@@ -138,7 +138,7 @@ export const Header = () => {
               alt="₸USD"
               style={{ objectFit: "contain", height: "2.25rem", width: "auto" }}
             />
-            <div className="hidden sm:flex flex-col leading-none">
+            <div className="flex flex-col leading-none">
               <span className="text-sm font-bold text-white tracking-tight">₸USD Treasury</span>
               <span className="text-[10px] text-[#a6a6a6]">Operated by AMI</span>
             </div>

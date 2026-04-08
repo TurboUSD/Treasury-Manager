@@ -2786,13 +2786,14 @@ const Home: NextPage = () => {
 
   return (
     <div className="flex flex-col items-center grow pt-6 pb-12" style={{ background: "#000" }}>
-      {/* Header */}
-      <div className="text-center px-4 mb-8">
+      {/* Header — hidden on mobile (shown in nav bar), visible on desktop */}
+      <div className="hidden sm:block text-center px-4 mb-8">
         <h1 className="text-4xl font-bold mb-1 text-white tracking-tight">₸USD Treasury</h1>
         <p className="text-sm" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
           Operated by AMI · Artificial Monetary Intelligence
         </p>
       </div>
+      <div className="sm:hidden mb-4" />
 
       {/* Hero: Managed Funds */}
       <div className="max-w-4xl w-full px-4 mb-8">
