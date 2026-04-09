@@ -682,11 +682,15 @@ export async function GET() {
       currentBlock: Number(currentBlock),
     };
 
-    await sb.from("treasury_cache").upsert({
-      key: "current",
-      data: cacheData,
-      updated_at: new Date().toISOString(),
-    });
+    const { error: cacheErr } = await sb.from("treasury_cache").upsert(
+      {
+        key: "current",
+        data: cacheData,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "key" },
+    );
+    if (cacheErr) console.error("Cache upsert failed:", cacheErr);
 
     // 6. Get operations from DB
     const { data: ops } = await sb
