@@ -86,15 +86,16 @@ export async function GET(request: Request) {
     for (const op of ops) {
       const dateMadrid = op.date_madrid || "";
 
-      // TUSD2 rounding (ceiling on .5)
+      // Round to 2 decimals (ceiling) for all tokens except ETH, WETH, USDC
       let buyAmt: number | null = op.buy_amount != null ? Number(op.buy_amount) : null;
       let sellAmt: number | null = op.sell_amount != null ? Number(op.sell_amount) : null;
+      const keepFull = new Set(["ETH", "WETH", "USDC"]);
 
-      if (op.buy_currency === "TUSD2" && buyAmt != null) {
-        buyAmt = roundTusdNum(buyAmt);
+      if (buyAmt != null && !keepFull.has(op.buy_currency || "")) {
+        buyAmt = roundCeil2(buyAmt);
       }
-      if (op.sell_currency === "TUSD2" && sellAmt != null) {
-        sellAmt = roundTusdNum(sellAmt);
+      if (sellAmt != null && !keepFull.has(op.sell_currency || "")) {
+        sellAmt = roundCeil2(sellAmt);
       }
 
       ws.addRow([
@@ -110,7 +111,7 @@ export async function GET(request: Request) {
         op.comment || "",                       // J: Comment (basescan link)
         op.trade_id || null,                    // K: Trade ID
         "Supabase",                             // L: Imported From
-        op.add_date || null,                    // M: Add Date
+        dateMadrid,                             // M: Add Date = Date
         dateMadrid,                             // N: Date (Madrid timezone)
         null,                                   // O: From Address
         null,                                   // P: To Address
@@ -153,7 +154,7 @@ export async function GET(request: Request) {
   }
 }
 
-/** Round TUSD2 amounts to 2 decimals, ceiling on .5. Returns number. */
-function roundTusdNum(n: number): number {
-  return Math.ceil(n * 100 - 0.0000001) / 100;
+/** Round to 2 decimals, half-up (standard rounding: 3rd decimal >= 5 rounds up) */
+function roundCeil2(n: number): number {
+  return Math.round(n * 100) / 100;
 }

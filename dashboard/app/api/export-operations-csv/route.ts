@@ -58,18 +58,20 @@ export async function GET(request: Request) {
       let buyAmt = op.buy_amount != null ? Number(op.buy_amount) : null;
       let sellAmt = op.sell_amount != null ? Number(op.sell_amount) : null;
 
-      if (op.buy_currency === "TUSD2" && buyAmt != null) {
-        buyAmt = roundTusd(buyAmt);
+      // Round to 2 decimals (ceiling) for all tokens except ETH, WETH, USDC
+      const keepFullDecimals = new Set(["ETH", "WETH", "USDC"]);
+      if (buyAmt != null && !keepFullDecimals.has(op.buy_currency || "")) {
+        buyAmt = roundCeil2(buyAmt);
       }
-      if (op.sell_currency === "TUSD2" && sellAmt != null) {
-        sellAmt = roundTusd(sellAmt);
+      if (sellAmt != null && !keepFullDecimals.has(op.sell_currency || "")) {
+        sellAmt = roundCeil2(sellAmt);
       }
 
       rows.push([
         q(op.type || ""),                          // Type
-        q(fmtNum(buyAmt)),                         // Buy
+        q(fmtNum(buyAmt, op.buy_currency)),        // Buy
         q(op.buy_currency || ""),                   // Cur.
-        q(fmtNum(sellAmt)),                         // Sell
+        q(fmtNum(sellAmt, op.sell_currency)),       // Sell
         q(op.sell_currency || ""),                   // Cur.
         q(""),                                      // Fee
         q(""),                                      // Cur.
@@ -112,13 +114,15 @@ function q(val: string): string {
   return `"${val.replace(/"/g, '""')}"`;
 }
 
-/** Format number with 8 decimal places, or empty string if null */
-function fmtNum(n: number | null): string {
+/** Format number: 8 decimals for ETH/WETH/USDC, 2 decimals for everything else */
+function fmtNum(n: number | null, currency?: string | null): string {
   if (n == null) return "";
-  return n.toFixed(8);
+  const keepFull = new Set(["ETH", "WETH", "USDC"]);
+  if (keepFull.has(currency || "")) return n.toFixed(8);
+  return n.toFixed(2);
 }
 
-/** Round TUSD2 amounts to 2 decimals, ceiling on .5 */
-function roundTusd(n: number): number {
-  return Math.ceil(n * 100 - 0.0000001) / 100;
+/** Round to 2 decimals, half-up (standard rounding: 3rd decimal >= 5 rounds up) */
+function roundCeil2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
