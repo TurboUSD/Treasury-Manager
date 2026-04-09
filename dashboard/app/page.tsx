@@ -2250,7 +2250,7 @@ const Home: NextPage = () => {
 
         if (opType === "StrategicBuy") {
           const ticker = tokenToTicker[(op.token_address || "").toLowerCase()] || (op.buy_currency || "");
-          amount = amount || `${fmtBig(op.buy_amount || 0)} ${ticker}`;
+          amount = `${fmtBig(op.buy_amount || 0)} ${ticker}`;
           token = ticker;
           const histWeth = op.weth_price_usd || wethPriceUsd;
           usdValue = histWeth > 0 && op.sell_amount ? fmtUsd(op.sell_amount * histWeth) : "\u2014";
@@ -2953,18 +2953,30 @@ const Home: NextPage = () => {
             apiData &&
             (connectedAddress.toLowerCase() === apiData.ownerAddr?.toLowerCase() ||
               connectedAddress.toLowerCase() === apiData.operatorAddr?.toLowerCase()) && (
-              <button
-                onClick={() => window.open("/api/export-operations", "_blank")}
-                className="btn btn-xs sm:btn-sm"
-                style={{
-                  background: "transparent",
-                  border: `1px solid ${GOLD}`,
-                  color: GOLD,
-                  marginTop: "-1rem",
-                }}
-              >
-                Export Excel
-              </button>
+              <div className="flex gap-2" style={{ marginTop: "-1rem" }}>
+                <button
+                  onClick={() => window.open("/api/export-operations-csv", "_blank")}
+                  className="btn btn-xs sm:btn-sm"
+                  style={{
+                    background: "transparent",
+                    border: `1px solid ${GOLD}`,
+                    color: GOLD,
+                  }}
+                >
+                  Export CSV
+                </button>
+                <button
+                  onClick={() => window.open("/api/export-operations", "_blank")}
+                  className="btn btn-xs sm:btn-sm"
+                  style={{
+                    background: "transparent",
+                    border: `1px solid ${GOLD}`,
+                    color: GOLD,
+                  }}
+                >
+                  Export Excel
+                </button>
+              </div>
             )}
         </div>
         <div
