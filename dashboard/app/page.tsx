@@ -1921,6 +1921,7 @@ const Home: NextPage = () => {
     }[];
     operations: {
       id: number;
+      type: string;
       op_type: string;
       amount_raw: string;
       token_address: string;
@@ -2251,26 +2252,31 @@ const Home: NextPage = () => {
           const ticker = tokenToTicker[(op.token_address || "").toLowerCase()] || (op.buy_currency || "");
           amount = amount || `${fmtBig(op.buy_amount || 0)} ${ticker}`;
           token = ticker;
-          usdValue = wethPriceUsd > 0 && op.sell_amount ? fmtUsd(op.sell_amount * wethPriceUsd) : "\u2014";
+          const histWeth = op.weth_price_usd || wethPriceUsd;
+          usdValue = histWeth > 0 && op.sell_amount ? fmtUsd(op.sell_amount * histWeth) : "\u2014";
         } else if (opType === "Buyback") {
           amount = amount || `${fmtBig(op.buy_amount || 0)} \u20B8USD`;
           token = op.sell_currency || "WETH";
-          usdValue = wethPriceUsd > 0 && op.sell_amount ? fmtUsd(op.sell_amount * wethPriceUsd) : "\u2014";
+          const histWethBB = op.weth_price_usd || wethPriceUsd;
+          usdValue = histWethBB > 0 && op.sell_amount ? fmtUsd(op.sell_amount * histWethBB) : "\u2014";
         } else if (opType === "Burn") {
           const tusdAmt = op.sell_amount || 0;
           amount = amount || `${fmtBig(tusdAmt)} \u20B8USD`;
           token = "\u20B8USD";
-          usdValue = tusdPriceUsd > 0 ? fmtUsd(tusdAmt * tusdPriceUsd) : "\u2014";
+          const histTusd = op.token_price_usd || tusdPriceUsd;
+          usdValue = histTusd > 0 ? fmtUsd(tusdAmt * histTusd) : "\u2014";
         } else if (opType === "Stake") {
           const tusdAmt = op.sell_amount || 0;
           amount = amount || `${fmtBig(tusdAmt)} \u20B8USD`;
           token = "\u20B8USD";
-          usdValue = tusdPriceUsd > 0 ? fmtUsd(tusdAmt * tusdPriceUsd) : "\u2014";
+          const histTusd = op.token_price_usd || tusdPriceUsd;
+          usdValue = histTusd > 0 ? fmtUsd(tusdAmt * histTusd) : "\u2014";
         } else if (opType === "BurnEngine") {
           const tusdAmt = op.sell_amount || 0;
           amount = amount || `${fmtBig(tusdAmt)} \u20B8USD`;
           token = "\u20B8USD";
-          usdValue = tusdPriceUsd > 0 ? fmtUsd(tusdAmt * tusdPriceUsd) : "\u2014";
+          const histTusd = op.token_price_usd || tusdPriceUsd;
+          usdValue = histTusd > 0 ? fmtUsd(tusdAmt * histTusd) : "\u2014";
         } else if (opType === "Rebalance") {
           amount = amount || `${fmtBig(op.sell_amount || 0)} ${op.sell_currency || ""}`;
           token = op.buy_currency || "";
