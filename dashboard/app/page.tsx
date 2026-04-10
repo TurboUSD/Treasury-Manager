@@ -2578,7 +2578,7 @@ const Home: NextPage = () => {
                     const roiLabel = row.roi === null ? "—" : `${row.roi >= 0 ? "+" : ""}${row.roi.toFixed(0)}%`;
                     const buyPriceFmt =
                       row.computedBuyPrice > 0
-                        ? `$${row.computedBuyPrice.toFixed(row.computedBuyPrice >= 1 ? 2 : 5).replace(/\.?0+$/, "")}`
+                        ? `$${row.computedBuyPrice.toFixed(row.computedBuyPrice >= 1 ? 2 : 7).replace(/\.?0+$/, "")}`
                         : "—";
                     return (
                       <tr key={row.preset.ticker} style={{ borderBottom: `1px solid #111` }}>
