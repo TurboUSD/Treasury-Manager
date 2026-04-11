@@ -143,6 +143,18 @@ function toMadridCT(ts: number): string {
 
 
 
+// ── CORS preflight ────────────────────────────────────────────────────────
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "https://turbousd.com",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  });
+}
+
 // ── Main GET handler ───────────────────────────────────────────────────────
 export async function GET() {
   try {

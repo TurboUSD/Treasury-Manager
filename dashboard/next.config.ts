@@ -11,6 +11,16 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: true
   },
   serverExternalPackages: ["exceljs"],
+  headers: async () => [
+    {
+      source: "/api/treasury-data",
+      headers: [
+        { key: "Access-Control-Allow-Origin", value: "https://turbousd.com" },
+        { key: "Access-Control-Allow-Methods", value: "GET, OPTIONS" },
+        { key: "Access-Control-Allow-Headers", value: "Content-Type" },
+      ],
+    },
+  ],
   webpack: config => { config.resolve.fallback = { fs: false, net: false, tls: false }; config.externals.push("pino-pretty", "lokijs", "encoding"); return config; }
 };
 
