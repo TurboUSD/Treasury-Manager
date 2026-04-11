@@ -1866,18 +1866,23 @@ function AddStrategicTokenPanel() {
 const Home: NextPage = () => {
   const [opsPage, setOpsPage] = useState(1);
   const [opsPerPage, setOpsPerPage] = useState(10);
-  const [opsFilter, setOpsFilter] = useState<string>("all");
+  const [opsTypeFilter, setOpsTypeFilter] = useState<Set<string>>(new Set());
+  const [opsTypeDropdownOpen, setOpsTypeDropdownOpen] = useState(false);
+  const opsTypeDropdownRef = useRef<HTMLDivElement>(null);
   const [opsTokenFilter, setOpsTokenFilter] = useState<Set<string>>(new Set());
   const [opsTokenDropdownOpen, setOpsTokenDropdownOpen] = useState(false);
   const opsTokenDropdownRef = useRef<HTMLDivElement>(null);
   const opsSectionRef = useRef<HTMLDivElement>(null);
   const [opsShowUsd, setOpsShowUsd] = useState(false);
 
-  // Close token dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (opsTokenDropdownRef.current && !opsTokenDropdownRef.current.contains(e.target as Node)) {
         setOpsTokenDropdownOpen(false);
+      }
+      if (opsTypeDropdownRef.current && !opsTypeDropdownRef.current.contains(e.target as Node)) {
+        setOpsTypeDropdownOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -2330,8 +2335,10 @@ const Home: NextPage = () => {
     // Default: newest first (reverse chronological)
     allOps.reverse();
 
-    let filtered =
-      opsFilter === "all" ? allOps : allOps.filter(op => op.type.toLowerCase().includes(opsFilter.toLowerCase()));
+    // Apply type filter (empty set = all types)
+    let filtered = opsTypeFilter.size === 0
+      ? allOps
+      : allOps.filter(op => opsTypeFilter.has(op.type.toLowerCase()));
 
     // Apply token filter if any tickers are selected
     if (opsTokenFilter.size > 0) {
@@ -2360,7 +2367,7 @@ const Home: NextPage = () => {
 
     return filtered;
   }, [
-    opsFilter,
+    opsTypeFilter,
     opsTokenFilter,
     engineCycles,
     engineBurned,
@@ -2651,7 +2658,7 @@ const Home: NextPage = () => {
                             style={{ color: GOLD, background: "none", border: "none", cursor: "pointer", padding: 0 }}
                             onClick={() => {
                               const ticker = row.preset.ticker;
-                              setOpsFilter("all");
+                              setOpsTypeFilter(new Set());
                               setOpsTokenFilter(new Set([ticker]));
                               setOpsPage(1);
                               setTimeout(() => {
@@ -2893,7 +2900,7 @@ const Home: NextPage = () => {
                                 return p.length === 3 ? `${p[1]}/${p[2]}/${p[0]}` : d.date;
                               })()}
                         </div>
-                        <div className="font-bold" style={{ color: GOLD }}>
+                        <div className="font-bold" style={{ color: "#fff" }}>
                           Total: {fmtUsd(total)}
                         </div>
                         {visibleItems.map(({ key, label, color }) => {
@@ -3004,72 +3011,118 @@ const Home: NextPage = () => {
             )}
         </div>
         <div
-          className="rounded-xl overflow-hidden text-xs sm:text-sm"
-          style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
+          className="rounded-xl text-xs sm:text-sm"
+          style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}`, overflow: "visible" }}
         >
           {/* Filter bar */}
           <div
             className="flex items-center gap-2 p-3 sm:p-4"
             style={{ borderBottom: `1px solid ${CARD_BORDER}` }}
           >
-            {/* Desktop: inline type buttons */}
+            {/* Desktop: inline type buttons (multi-select) */}
             <div className="hidden sm:flex gap-2 overflow-x-auto flex-nowrap flex-1" style={{ WebkitOverflowScrolling: "touch" }}>
-              {["all", "buyback", "burn", "rebalance", "stake", "burnengine", "strategicbuy", "strategicsell"].map(f => (
-                <button
-                  key={f}
-                  onClick={() => {
-                    setOpsFilter(f);
-                    setOpsPage(1);
-                  }}
-                  className="btn btn-xs sm:btn-sm shrink-0"
-                  style={{
-                    background: opsFilter === f ? GOLD : "transparent",
-                    border: `1px solid ${opsFilter === f ? GOLD : "#4f4f4f"}`,
-                    color: opsFilter === f ? "#000" : "#888",
-                    fontSize: "12px",
-                  }}
-                >
-                  {f === "all"
-                    ? "All"
-                    : f === "burnengine"
-                      ? "BurnEngine"
-                      : f === "strategicbuy"
-                        ? "Str.Buy"
-                        : f === "strategicsell"
-                          ? "Str.Sell"
-                          : f.charAt(0).toUpperCase() + f.slice(1)}
-                </button>
-              ))}
+              {[
+                { v: "all", l: "All" },
+                { v: "buyback", l: "Buyback" },
+                { v: "burn", l: "Burn" },
+                { v: "rebalance", l: "Rebalance" },
+                { v: "stake", l: "Stake" },
+                { v: "burnengine", l: "BurnEngine" },
+                { v: "strategicbuy", l: "Str.Buy" },
+                { v: "strategicsell", l: "Str.Sell" },
+              ].map(({ v, l }) => {
+                const isAll = v === "all";
+                const active = isAll ? opsTypeFilter.size === 0 : opsTypeFilter.has(v);
+                return (
+                  <button
+                    key={v}
+                    onClick={() => {
+                      if (isAll) {
+                        setOpsTypeFilter(new Set());
+                      } else {
+                        setOpsTypeFilter(prev => {
+                          const next = new Set(prev);
+                          if (next.has(v)) next.delete(v);
+                          else next.add(v);
+                          return next;
+                        });
+                      }
+                      setOpsPage(1);
+                    }}
+                    className="btn btn-xs sm:btn-sm shrink-0"
+                    style={{
+                      background: active ? GOLD : "transparent",
+                      border: `1px solid ${active ? GOLD : "#4f4f4f"}`,
+                      color: active ? "#000" : "#888",
+                      fontSize: "12px",
+                    }}
+                  >
+                    {l}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Mobile: Type dropdown */}
-            <div className="sm:hidden relative">
-              <select
-                value={opsFilter}
-                onChange={e => { setOpsFilter(e.target.value); setOpsPage(1); }}
+            {/* Mobile: Type dropdown (multi-select, same style as Token) */}
+            <div ref={opsTypeDropdownRef} className="sm:hidden relative shrink-0">
+              <button
+                onClick={() => setOpsTypeDropdownOpen(prev => !prev)}
                 className="btn btn-xs"
                 style={{
-                  background: "transparent",
-                  border: `1px solid ${GOLD}`,
-                  color: GOLD,
+                  background: opsTypeFilter.size > 0 ? GOLD : "transparent",
+                  border: `1px solid ${opsTypeFilter.size > 0 ? GOLD : "#4f4f4f"}`,
+                  color: opsTypeFilter.size > 0 ? "#000" : "#888",
                   fontSize: "11px",
-                  paddingRight: "1.5rem",
-                  appearance: "auto",
+                  gap: "4px",
                 }}
               >
-                {[
-                  { v: "all", l: "All Types" },
-                  { v: "buyback", l: "Buyback" },
-                  { v: "burn", l: "Burn" },
-                  { v: "rebalance", l: "Rebalance" },
-                  { v: "stake", l: "Stake" },
-                  { v: "burnengine", l: "BurnEngine" },
-                  { v: "strategicbuy", l: "Str.Buy" },
-                  { v: "strategicsell", l: "Str.Sell" },
-                ].map(o => (
-                  <option key={o.v} value={o.v} style={{ background: "#1a1a1a", color: "#e8e8e8" }}>{o.l}</option>
-                ))}
-              </select>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
+                {opsTypeFilter.size > 0 ? `${opsTypeFilter.size} type${opsTypeFilter.size > 1 ? "s" : ""}` : "All Types"}
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
+              </button>
+              {opsTypeDropdownOpen && (
+                <div
+                  className="absolute left-0 top-full mt-1 rounded-lg shadow-xl z-50 py-1 min-w-[160px]"
+                  style={{ background: "#1a1a1a", border: `1px solid ${CARD_BORDER}` }}
+                >
+                  {[
+                    { v: "all", l: "All Types" },
+                    { v: "buyback", l: "Buyback" },
+                    { v: "burn", l: "Burn" },
+                    { v: "rebalance", l: "Rebalance" },
+                    { v: "stake", l: "Stake" },
+                    { v: "burnengine", l: "BurnEngine" },
+                    { v: "strategicbuy", l: "Str.Buy" },
+                    { v: "strategicsell", l: "Str.Sell" },
+                  ].map(({ v, l }) => {
+                    const isAll = v === "all";
+                    const selected = isAll ? opsTypeFilter.size === 0 : opsTypeFilter.has(v);
+                    return (
+                      <button
+                        key={v}
+                        onClick={() => {
+                          if (isAll) {
+                            setOpsTypeFilter(new Set());
+                          } else {
+                            setOpsTypeFilter(prev => {
+                              const next = new Set(prev);
+                              if (next.has(v)) next.delete(v);
+                              else next.add(v);
+                              return next;
+                            });
+                          }
+                          setOpsPage(1);
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#333] flex items-center gap-2"
+                        style={{ color: selected ? (isAll ? GOLD : "#fff") : "#888" }}
+                      >
+                        <span className="inline-block w-3 h-3 rounded-sm border" style={{ borderColor: "#555", background: selected ? GOLD : "transparent" }} />
+                        {l}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Token dropdown — both desktop and mobile */}
@@ -3086,7 +3139,7 @@ const Home: NextPage = () => {
                 }}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
-                {opsTokenFilter.size > 0 ? `${opsTokenFilter.size} token${opsTokenFilter.size > 1 ? "s" : ""}` : "Token"}
+                {opsTokenFilter.size > 0 ? `${opsTokenFilter.size} token${opsTokenFilter.size > 1 ? "s" : ""}` : "All Tokens"}
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
               </button>
               {opsTokenDropdownOpen && (
@@ -3103,10 +3156,20 @@ const Home: NextPage = () => {
                     All Tokens
                   </button>
                   {(() => {
-                    const allTokens = [
-                      ...STRATEGIC_PRESETS.map(p => p.ticker),
-                      "\u20B8USD", "WETH", "USDC",
-                    ];
+                    // Build token list from actual operations in the table
+                    const tokenSet = new Set<string>();
+                    const allDbOps = apiData?.operations ?? [];
+                    for (const op of allDbOps) {
+                      const tk = tokenToTicker[(op.token_address || "").toLowerCase()] || op.buy_currency || op.sell_currency || "";
+                      if (tk) tokenSet.add(tk);
+                    }
+                    // Also add tokens from hardcoded historical ops
+                    for (const op of filteredOps) {
+                      if (op.token) tokenSet.add(op.token);
+                    }
+                    tokenSet.delete("");
+                    tokenSet.delete("ETH");
+                    const allTokens = Array.from(tokenSet).sort();
                     return allTokens.map(t => {
                       const selected = opsTokenFilter.has(t);
                       return (
