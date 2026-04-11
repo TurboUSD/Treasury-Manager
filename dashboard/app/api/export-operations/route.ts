@@ -1,25 +1,12 @@
 import { NextResponse } from "next/server";
-import ExcelJS from "exceljs";
 import { getSupabaseAdmin } from "~~/utils/supabase";
 
 /**
  * GET /api/export-operations
  *
  * Exports operations from Supabase as a CoinTracking-compatible .xlsx file.
- * Format matches exactly the CoinTracking Trade Table export layout:
- *
- * Row 1: Merged title "CoinTracking · Trade Table" (A1:S1)
- * Row 2: Headers —
- *   Type | Buy | Cur. | Sell | Cur. | Fee | Cur. | Exchange | Group | Comment |
- *   Trade ID | Imported From | Add Date | Date | From Address | To Address |
- *   Tx Hash | Sell From Address | Sell To Address
- *
- * Numeric amounts use COMMA as decimal separator (European format).
- * TUSD2 amounts rounded to 2 decimals (ceiling on .5).
- *
- * Query params:
- *   ?from=2026-04-06  — optional, filter from this date (inclusive)
- *   ?to=2026-12-31    — optional, filter to this date (inclusive)
+ * ExcelJS is loaded dynamically at runtime to avoid webpack bundling it
+ * (which causes 20+ minute builds on Vercel).
  */
 export async function GET(request: Request) {
   try {
@@ -31,7 +18,7 @@ export async function GET(request: Request) {
     let query = sb
       .from("operations")
       .select("*")
-      .not("op_type", "in", "(BurnEngine,FeeClaim)")  // Scanner-written passive events excluded from CoinTracking
+      .not("op_type", "in", "(BurnEngine,FeeClaim)")
       .order("date_utc", { ascending: true });
 
     if (from) query = query.gte("date_utc", `${from}T00:00:00Z`);
@@ -47,77 +34,59 @@ export async function GET(request: Request) {
       return new Response("No operations found", { status: 404 });
     }
 
-    // ── Build Excel workbook matching CoinTracking format ─────────────────
+    // Dynamic import — keeps exceljs out of the webpack bundle
+    const ExcelJS = (await import("exceljs")).default;
+
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("Sheet1");
 
     // Row 1: Merged title
     ws.mergeCells("A1:S1");
     const titleCell = ws.getCell("A1");
-    titleCell.value = "CoinTracking · Trade Table";
+    titleCell.value = "CoinTracking \u00b7 Trade Table";
     titleCell.font = { bold: true, size: 14 };
 
-    // Row 2: Headers (exact CoinTracking column names)
+    // Row 2: Headers
     const headers = [
-      "Type",           // A
-      "Buy",            // B
-      "Cur.",           // C
-      "Sell",           // D
-      "Cur.",           // E
-      "Fee",            // F
-      "Cur.",           // G
-      "Exchange",       // H
-      "Group",          // I
-      "Comment",        // J
-      "Trade ID",       // K
-      "Imported From",  // L
-      "Add Date",       // M
-      "Date",           // N
-      "From Address",   // O
-      "To Address",     // P
-      "Tx Hash",        // Q
-      "Sell From Address", // R
-      "Sell To Address",   // S
+      "Type", "Buy", "Cur.", "Sell", "Cur.", "Fee", "Cur.",
+      "Exchange", "Group", "Comment", "Trade ID", "Imported From",
+      "Add Date", "Date", "From Address", "To Address",
+      "Tx Hash", "Sell From Address", "Sell To Address",
     ];
     const headerRow = ws.addRow(headers);
     headerRow.font = { bold: true };
 
     // Data rows
+    const keepFull = new Set(["ETH", "WETH", "USDC"]);
     for (const op of ops) {
       const dateMadrid = op.date_madrid || "";
 
-      // Round to 2 decimals (ceiling) for all tokens except ETH, WETH, USDC
       let buyAmt: number | null = op.buy_amount != null ? Number(op.buy_amount) : null;
       let sellAmt: number | null = op.sell_amount != null ? Number(op.sell_amount) : null;
-      const keepFull = new Set(["ETH", "WETH", "USDC"]);
 
       if (buyAmt != null && !keepFull.has(op.buy_currency || "")) {
-        buyAmt = roundCeil2(buyAmt);
+        buyAmt = roundHalfUp2(buyAmt);
       }
       if (sellAmt != null && !keepFull.has(op.sell_currency || "")) {
-        sellAmt = roundCeil2(sellAmt);
+        sellAmt = roundHalfUp2(sellAmt);
       }
 
       ws.addRow([
-        op.type || "",                          // A: Type
-        buyAmt,                                 // B: Buy (number or null)
-        op.buy_currency || null,                // C: Cur.
-        sellAmt,                                // D: Sell (number or null)
-        op.sell_currency || null,               // E: Cur.
-        null,                                   // F: Fee (empty — gas is separate row)
-        null,                                   // G: Cur.
-        op.exchange || "Treasury Manager",      // H: Exchange
-        op.group_name || "",                    // I: Group
-        op.comment || "",                       // J: Comment (basescan link)
-        op.trade_id || null,                    // K: Trade ID
-        "Supabase",                             // L: Imported From
-        dateMadrid,                             // M: Add Date = Date
-        dateMadrid,                             // N: Date (Madrid timezone)
-        null,                                   // O: From Address
-        null,                                   // P: To Address
-        null,                                   // Q: Tx Hash
-        null,                                   // R: Sell From Address
-        null,                                   // S: Sell To Address
+        op.type || "",
+        buyAmt,
+        op.buy_currency || null,
+        sellAmt,
+        op.sell_currency || null,
+        null,
+        null,
+        op.exchange || "Treasury Manager",
+        op.group_name || "",
+        op.comment || "",
+        op.trade_id || null,
+        "Supabase",
+        dateMadrid,
+        dateMadrid,
+        null, null, null, null, null,
       ]);
     }
 
@@ -133,9 +102,7 @@ export async function GET(request: Request) {
       col.width = Math.min(maxLen + 2, 50);
     });
 
-    // Generate buffer
     const buffer = await wb.xlsx.writeBuffer();
-
     const filename = `TurboUSD_Operations_${new Date().toISOString().slice(0, 10)}.xlsx`;
 
     return new Response(buffer as ArrayBuffer, {
@@ -154,7 +121,7 @@ export async function GET(request: Request) {
   }
 }
 
-/** Round to 2 decimals, half-up (standard rounding: 3rd decimal >= 5 rounds up) */
-function roundCeil2(n: number): number {
+/** Round to 2 decimals, half-up */
+function roundHalfUp2(n: number): number {
   return Math.round(n * 100) / 100;
 }
