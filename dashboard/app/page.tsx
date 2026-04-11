@@ -721,7 +721,7 @@ const TEXT_DIM = "#888888";
 
 // ── Components ────────────────────────────────────────────────────────────
 
-function StatCard({ title, value, subtitle }: { title: React.ReactNode; value: string; subtitle?: string }) {
+function StatCard({ title, value, subtitle }: { title: React.ReactNode; value: string; subtitle?: React.ReactNode }) {
   return (
     <div
       className="rounded-xl p-3 sm:p-5 stat-card-mobile"
@@ -735,9 +735,9 @@ function StatCard({ title, value, subtitle }: { title: React.ReactNode; value: s
       </h3>
       <p className="text-base sm:text-xl font-bold mt-1 text-white">{value}</p>
       {subtitle && (
-        <p className="text-[10px] sm:text-xs mt-1" style={{ color: TEXT_DIM }}>
+        <div className="text-[10px] sm:text-xs mt-2" style={{ color: TEXT_DIM }}>
           {subtitle}
-        </p>
+        </div>
       )}
     </div>
   );
@@ -2467,19 +2467,19 @@ const Home: NextPage = () => {
         <StatCard
           title={`\u20B8USD Burned`}
           value={fmtBig(tusdBurnedNum)}
-          subtitle={`${fmtUsdShort(burnUsd)} \u00b7 ${fmtPct(burnPct)}`}
+          subtitle={<>{fmtUsdShort(burnUsd)}<br />{fmtPct(burnPct)}</>}
         />
         <StatCard
           title={`\u20B8USD Bought`}
           value={fmtBig(totalBuybackTusd)}
-          subtitle={`${fmtUsdShort(buybackUsd)} \u00b7 ${fmtPct(buybackPct)}`}
+          subtitle={<>{fmtUsdShort(buybackUsd)}<br />{fmtPct(buybackPct)}</>}
         />
         <StatCard
           title={`\u20B8USD Locked`}
           value={totalLockedTusd > 0 ? fmtBig(totalLockedTusd) : "\u2014"}
           subtitle={
             totalLockedTusd > 0
-              ? `${fmtUsdShort(totalLockedTusd * tusdPriceUsd)} \u00b7 ${fmtPct((totalLockedTusd / tusdSupplyNum) * 100)}`
+              ? <>{fmtUsdShort(totalLockedTusd * tusdPriceUsd)}<br />{fmtPct((totalLockedTusd / tusdSupplyNum) * 100)}</>
               : "No locked tokens"
           }
         />
