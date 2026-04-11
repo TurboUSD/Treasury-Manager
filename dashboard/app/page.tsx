@@ -2351,8 +2351,9 @@ const Home: NextPage = () => {
     }
 
     // Apply sort if active
-    if (opsSort) {
-      const { col, dir } = opsSort;
+    {
+      const col = opsSort?.col ?? "date";
+      const dir = opsSort?.dir ?? "desc";
       filtered.sort((a, b) => {
         let cmp = 0;
         if (col === "date") {
@@ -2498,7 +2499,7 @@ const Home: NextPage = () => {
       {/* Zero ₸USD Sold Banner */}
       <div className="max-w-4xl w-full px-4 mb-8 sm:flex sm:justify-center">
         <div
-          className="relative rounded-xl overflow-hidden px-5 py-4 flex items-center gap-4 sm:gap-10 w-full sm:max-w-[60%]"
+          className="relative rounded-xl overflow-hidden px-5 py-4 flex items-center gap-4 sm:gap-10 w-full sm:max-w-[50%]"
           style={{
             background: "linear-gradient(135deg, #002a10 0%, #00150a 100%)",
             border: "1px solid #0f5a2a",
