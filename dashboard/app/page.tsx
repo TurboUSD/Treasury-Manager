@@ -721,12 +721,17 @@ const TEXT_DIM = "#888888";
 
 // ── Components ────────────────────────────────────────────────────────────
 
-function StatCard({ title, value, subtitle }: { title: React.ReactNode; value: string; subtitle?: React.ReactNode }) {
+function StatCard({ title, value, subtitle, emoji }: { title: React.ReactNode; value: string; subtitle?: React.ReactNode; emoji?: string }) {
   return (
     <div
-      className="rounded-xl p-3 sm:p-5 stat-card-mobile"
+      className="rounded-xl p-3 sm:p-5 stat-card-mobile relative"
       style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
     >
+      {emoji && (
+        <span className="absolute bottom-2 right-2 sm:bottom-auto sm:top-1/2 sm:right-4 sm:-translate-y-1/2 text-2xl sm:text-4xl opacity-80 select-none">
+          {emoji}
+        </span>
+      )}
       <h3
         className="text-[10px] sm:text-xs font-medium uppercase tracking-wider"
         style={{ color: TEXT_MUTED, fontWeight: 600 }}
@@ -735,7 +740,7 @@ function StatCard({ title, value, subtitle }: { title: React.ReactNode; value: s
       </h3>
       <p className="text-base sm:text-xl font-bold mt-1 text-white">{value}</p>
       {subtitle && (
-        <div className="text-[10px] sm:text-xs mt-2" style={{ color: TEXT_DIM }}>
+        <div className="text-[10px] sm:text-sm mt-2" style={{ color: TEXT_DIM }}>
           {subtitle}
         </div>
       )}
@@ -2463,26 +2468,31 @@ const Home: NextPage = () => {
       </div>
 
       {/* Main Stats Row */}
-      <div className="grid grid-cols-3 gap-3 sm:gap-4 max-w-4xl w-full px-4 mb-8">
-        <StatCard
-          title={`\u20B8USD Burned`}
-          value={fmtBig(tusdBurnedNum)}
-          subtitle={<>{fmtUsdShort(burnUsd)}<br />{fmtPct(burnPct)}</>}
-        />
-        <StatCard
-          title={`\u20B8USD Bought`}
-          value={fmtBig(totalBuybackTusd)}
-          subtitle={<>{fmtUsdShort(buybackUsd)}<br />{fmtPct(buybackPct)}</>}
-        />
-        <StatCard
-          title={`\u20B8USD Locked`}
-          value={totalLockedTusd > 0 ? fmtBig(totalLockedTusd) : "\u2014"}
-          subtitle={
-            totalLockedTusd > 0
-              ? <>{fmtUsdShort(totalLockedTusd * tusdPriceUsd)}<br />{fmtPct((totalLockedTusd / tusdSupplyNum) * 100)}</>
-              : "No locked tokens"
-          }
-        />
+      <div className="max-w-4xl w-full px-4 mb-8">
+        <div className="grid grid-cols-3 gap-3 sm:gap-4 max-w-2xl mx-auto">
+          <StatCard
+            title={`\u20B8USD Burned`}
+            value={fmtBig(tusdBurnedNum)}
+            subtitle={<>{fmtUsdShort(burnUsd)}<br />{fmtPct(burnPct)}</>}
+            emoji="🔥"
+          />
+          <StatCard
+            title={`\u20B8USD Bought`}
+            value={fmtBig(totalBuybackTusd)}
+            subtitle={<>{fmtUsdShort(buybackUsd)}<br />{fmtPct(buybackPct)}</>}
+            emoji="🛒"
+          />
+          <StatCard
+            title={`\u20B8USD Locked`}
+            value={totalLockedTusd > 0 ? fmtBig(totalLockedTusd) : "\u2014"}
+            subtitle={
+              totalLockedTusd > 0
+                ? <>{fmtUsdShort(totalLockedTusd * tusdPriceUsd)}<br />{fmtPct((totalLockedTusd / tusdSupplyNum) * 100)}</>
+                : "No locked tokens"
+            }
+            emoji="🔒"
+          />
+        </div>
       </div>
 
       {/* Zero ₸USD Sold Banner */}
@@ -2888,7 +2898,9 @@ const Home: NextPage = () => {
                           padding: "8px 12px",
                           color: "#e8e8e8",
                           fontSize: 12,
-                          lineHeight: 1.1,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "0.25em",
                         }}
                       >
                         <div className="font-semibold">
