@@ -21,7 +21,7 @@ const nextConfig: NextConfig = {
       ],
     },
   ],
-  webpack: config => { config.resolve.fallback = { fs: false, net: false, tls: false }; config.externals.push("pino-pretty", "lokijs", "encoding"); return config; }
+  webpack: config => { config.resolve.fallback = { fs: false, net: false, tls: false }; config.externals.push("pino-pretty", "lokijs", "encoding", "exceljs"); return config; }
 };
 
 const isIpfs = process.env.NEXT_PUBLIC_IPFS_BUILD === "true";
