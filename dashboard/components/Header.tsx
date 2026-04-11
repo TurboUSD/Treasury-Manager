@@ -91,6 +91,38 @@ export const HeaderMenuLinks = () => {
   );
 };
 
+const MobileLinks = ({ onClose }: { onClose: () => void }) => {
+  const pathname = usePathname();
+  return (
+    <div className="px-6 pb-4 space-y-0" style={{ paddingTop: 10 }}>
+      {menuLinks.map(({ label, href, external }) => {
+        const isActive = !external && pathname === href;
+        return external ? (
+          <a key={href} href={href} target="_blank" rel="noopener noreferrer" className="block py-1 text-center text-[15px] font-medium text-white hover:text-[#43e397] transition-colors" onClick={onClose}>
+            {label}
+          </a>
+        ) : (
+          <Link key={href} href={href} className={`block py-1 text-center text-[15px] font-medium ${isActive ? "text-[#43e397]" : "text-white"} hover:text-[#43e397] transition-colors`} onClick={onClose}>
+            {label}
+          </Link>
+        );
+      })}
+      <div className="flex items-center gap-5 pt-4 pb-4 justify-center">
+        {SOCIAL_LINKS.map(({ label, href, icon }) => (
+          <a key={label} href={href} target="_blank" rel="noopener noreferrer" aria-label={label} className="text-white hover:text-[#43e397] transition-colors">
+            {icon}
+          </a>
+        ))}
+      </div>
+      <div className="flex justify-center pb-3">
+        <a href="https://turbousd.com/buy" target="_blank" rel="noopener noreferrer" className="inline-block text-center py-2 px-10 text-sm font-semibold rounded-full transition-all duration-200 tusd-btn-outline" style={{ color: "#43e397", background: "transparent" }} onMouseEnter={e => { e.currentTarget.style.background = "#43e397"; e.currentTarget.style.color = "#000"; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#43e397"; }} onClick={onClose}>
+          {`Get \u20B8USD`}
+        </a>
+      </div>
+    </div>
+  );
+};
+
 export const Header = () => {
   const { targetNetwork } = useTargetNetwork();
   const isLocalNetwork = targetNetwork.id === hardhat.id;
@@ -132,31 +164,7 @@ export const Header = () => {
 
       {/* Mobile menu — overlay, height collapse animation */}
       <div ref={mobileMenuRef} className="lg:hidden absolute left-0 right-0 overflow-hidden" style={{ background: "#000", top: "3.5rem", zIndex: 50, maxHeight: mobileOpen ? "400px" : "0px", transition: "max-height 0.3s ease", boxShadow: mobileOpen ? "0 8px 24px rgba(0,0,0,0.6)" : "none" }}>
-        <div className="px-6 pb-4 space-y-0" style={{ paddingTop: 10 }}>
-          {menuLinks.map(({ label, href, external }) =>
-            external ? (
-              <a key={href} href={href} target="_blank" rel="noopener noreferrer" className="block py-1 text-center text-[15px] font-medium text-white hover:text-[#43e397] transition-colors" onClick={() => setMobileOpen(false)}>
-                {label}
-              </a>
-            ) : (
-              <Link key={href} href={href} className="block py-1 text-center text-[15px] font-medium text-white hover:text-[#43e397] transition-colors" onClick={() => setMobileOpen(false)}>
-                {label}
-              </Link>
-            ),
-          )}
-          <div className="flex items-center gap-5 pt-4 pb-4 justify-center">
-            {SOCIAL_LINKS.map(({ label, href, icon }) => (
-              <a key={label} href={href} target="_blank" rel="noopener noreferrer" aria-label={label} className="text-white hover:text-[#43e397] transition-colors">
-                {icon}
-              </a>
-            ))}
-          </div>
-          <div className="flex justify-center pb-3">
-            <a href="https://turbousd.com/buy" target="_blank" rel="noopener noreferrer" className="inline-block text-center py-2 px-10 text-sm font-semibold rounded-full transition-all duration-200 tusd-btn-outline" style={{ color: "#43e397", background: "transparent" }} onMouseEnter={e => { e.currentTarget.style.background = "#43e397"; e.currentTarget.style.color = "#000"; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#43e397"; }} onClick={() => setMobileOpen(false)}>
-              {`Get \u20B8USD`}
-            </a>
-          </div>
-        </div>
+        <MobileLinks onClose={() => setMobileOpen(false)} />
       </div>
     </div>
   );

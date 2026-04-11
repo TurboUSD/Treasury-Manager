@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Address } from "@scaffold-ui/components";
 import type { NextPage } from "next";
@@ -1867,7 +1867,23 @@ const Home: NextPage = () => {
   const [opsPage, setOpsPage] = useState(1);
   const [opsPerPage, setOpsPerPage] = useState(10);
   const [opsFilter, setOpsFilter] = useState<string>("all");
+  const [opsTokenFilter, setOpsTokenFilter] = useState<Set<string>>(new Set());
+  const [opsTokenDropdownOpen, setOpsTokenDropdownOpen] = useState(false);
+  const opsTokenDropdownRef = useRef<HTMLDivElement>(null);
+  const opsSectionRef = useRef<HTMLDivElement>(null);
   const [opsShowUsd, setOpsShowUsd] = useState(false);
+
+  // Close token dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (opsTokenDropdownRef.current && !opsTokenDropdownRef.current.contains(e.target as Node)) {
+        setOpsTokenDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   const [stratShowUsd, setStratShowUsd] = useState(false);
   const [stratShowBuyPrice, setStratShowBuyPrice] = useState(false);
   const [stratPage, setStratPage] = useState(1);
@@ -2193,9 +2209,9 @@ const Home: NextPage = () => {
     if (chartView === "all") {
       return [
         { key: "tusd", label: "₸USD", color: "#43e397" },
-        { key: "weth", label: "WETH", color: "#627eea" },
-        { key: "usdc", label: "USDC", color: "#2775ca" },
-        { key: "strategic", label: "Strategic", color: "#a78bfa" },
+        { key: "weth", label: "WETH", color: "#8b5cf6" },
+        { key: "usdc", label: "USDC", color: "#3b82f6" },
+        { key: "strategic", label: "Strategic", color: "#c2660a" },
       ];
     }
     return STRATEGIC_PRESETS.filter(p => strategicRows.some(r => r.preset.ticker === p.ticker && r.balance > 0)).map(
@@ -2314,8 +2330,13 @@ const Home: NextPage = () => {
     // Default: newest first (reverse chronological)
     allOps.reverse();
 
-    const filtered =
+    let filtered =
       opsFilter === "all" ? allOps : allOps.filter(op => op.type.toLowerCase().includes(opsFilter.toLowerCase()));
+
+    // Apply token filter if any tickers are selected
+    if (opsTokenFilter.size > 0) {
+      filtered = filtered.filter(op => opsTokenFilter.has(op.token));
+    }
 
     // Apply sort if active
     if (opsSort) {
@@ -2340,6 +2361,7 @@ const Home: NextPage = () => {
     return filtered;
   }, [
     opsFilter,
+    opsTokenFilter,
     engineCycles,
     engineBurned,
     tusdPriceUsd,
@@ -2402,7 +2424,7 @@ const Home: NextPage = () => {
     BurnEngine: "#ff6b6b",
     Rebalance: "#5b8dee",
     Stake: "#ffcf72",
-    StrategicBuy: "#a78bfa",
+    StrategicBuy: "#c2660a",
     StrategicSell: "#fb923c",
     FeeClaim: "#4ade80",
   };
@@ -2624,19 +2646,21 @@ const Home: NextPage = () => {
                           <span style={{ color: roiColor, fontWeight: 600 }}>{roiLabel}</span>
                         </td>
                         <td>
-                          {row.firstBuyTxHash ? (
-                            <a
-                              href={`https://basescan.org/tx/${row.firstBuyTxHash}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="hover:underline"
-                              style={{ color: GOLD }}
-                            >
-                              View ↗
-                            </a>
-                          ) : (
-                            <span style={{ color: TEXT_DIM }}>—</span>
-                          )}
+                          <button
+                            className="hover:underline"
+                            style={{ color: GOLD, background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                            onClick={() => {
+                              const ticker = row.preset.ticker;
+                              setOpsFilter("all");
+                              setOpsTokenFilter(new Set([ticker]));
+                              setOpsPage(1);
+                              setTimeout(() => {
+                                opsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                              }, 100);
+                            }}
+                          >
+                            View
+                          </button>
                         </td>
                       </tr>
                     );
@@ -2946,7 +2970,7 @@ const Home: NextPage = () => {
       <LegacyFeeBurnerPanel />
 
       {/* Operations Table */}
-      <div className="max-w-4xl w-full px-4 mb-8">
+      <div ref={opsSectionRef} className="max-w-4xl w-full px-4 mb-8">
         <div className="flex items-center justify-between" style={{ marginBottom: "-0.5rem" }}>
           <SectionTitle>Operations</SectionTitle>
           {connectedAddress &&
@@ -2983,37 +3007,132 @@ const Home: NextPage = () => {
           className="rounded-xl overflow-hidden text-xs sm:text-sm"
           style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
         >
-          {/* Filter bar — horizontal scroll on mobile */}
+          {/* Filter bar */}
           <div
-            className="flex gap-2 p-3 sm:p-4 overflow-x-auto flex-nowrap"
-            style={{ borderBottom: `1px solid ${CARD_BORDER}`, WebkitOverflowScrolling: "touch" }}
+            className="flex items-center gap-2 p-3 sm:p-4"
+            style={{ borderBottom: `1px solid ${CARD_BORDER}` }}
           >
-            {["all", "buyback", "burn", "rebalance", "stake", "burnengine", "strategicbuy", "strategicsell"].map(f => (
-              <button
-                key={f}
-                onClick={() => {
-                  setOpsFilter(f);
-                  setOpsPage(1);
-                }}
-                className="btn btn-xs sm:btn-sm shrink-0"
+            {/* Desktop: inline type buttons */}
+            <div className="hidden sm:flex gap-2 overflow-x-auto flex-nowrap flex-1" style={{ WebkitOverflowScrolling: "touch" }}>
+              {["all", "buyback", "burn", "rebalance", "stake", "burnengine", "strategicbuy", "strategicsell"].map(f => (
+                <button
+                  key={f}
+                  onClick={() => {
+                    setOpsFilter(f);
+                    setOpsPage(1);
+                  }}
+                  className="btn btn-xs sm:btn-sm shrink-0"
+                  style={{
+                    background: opsFilter === f ? GOLD : "transparent",
+                    border: `1px solid ${opsFilter === f ? GOLD : "#4f4f4f"}`,
+                    color: opsFilter === f ? "#000" : "#888",
+                    fontSize: "12px",
+                  }}
+                >
+                  {f === "all"
+                    ? "All"
+                    : f === "burnengine"
+                      ? "BurnEngine"
+                      : f === "strategicbuy"
+                        ? "Str.Buy"
+                        : f === "strategicsell"
+                          ? "Str.Sell"
+                          : f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
+
+            {/* Mobile: Type dropdown */}
+            <div className="sm:hidden relative">
+              <select
+                value={opsFilter}
+                onChange={e => { setOpsFilter(e.target.value); setOpsPage(1); }}
+                className="btn btn-xs"
                 style={{
-                  background: opsFilter === f ? GOLD : "transparent",
-                  border: `1px solid ${opsFilter === f ? GOLD : "#4f4f4f"}`,
-                  color: opsFilter === f ? "#000" : "#888",
-                  fontSize: "12px",
+                  background: "transparent",
+                  border: `1px solid ${GOLD}`,
+                  color: GOLD,
+                  fontSize: "11px",
+                  paddingRight: "1.5rem",
+                  appearance: "auto",
                 }}
               >
-                {f === "all"
-                  ? "All"
-                  : f === "burnengine"
-                    ? "BurnEngine"
-                    : f === "strategicbuy"
-                      ? "Str.Buy"
-                      : f === "strategicsell"
-                        ? "Str.Sell"
-                        : f.charAt(0).toUpperCase() + f.slice(1)}
+                {[
+                  { v: "all", l: "All Types" },
+                  { v: "buyback", l: "Buyback" },
+                  { v: "burn", l: "Burn" },
+                  { v: "rebalance", l: "Rebalance" },
+                  { v: "stake", l: "Stake" },
+                  { v: "burnengine", l: "BurnEngine" },
+                  { v: "strategicbuy", l: "Str.Buy" },
+                  { v: "strategicsell", l: "Str.Sell" },
+                ].map(o => (
+                  <option key={o.v} value={o.v} style={{ background: "#1a1a1a", color: "#e8e8e8" }}>{o.l}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Token dropdown — both desktop and mobile */}
+            <div ref={opsTokenDropdownRef} className="relative ml-auto shrink-0">
+              <button
+                onClick={() => setOpsTokenDropdownOpen(prev => !prev)}
+                className="btn btn-xs sm:btn-sm"
+                style={{
+                  background: opsTokenFilter.size > 0 ? GOLD : "transparent",
+                  border: `1px solid ${opsTokenFilter.size > 0 ? GOLD : "#4f4f4f"}`,
+                  color: opsTokenFilter.size > 0 ? "#000" : "#888",
+                  fontSize: "12px",
+                  gap: "4px",
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
+                {opsTokenFilter.size > 0 ? `${opsTokenFilter.size} token${opsTokenFilter.size > 1 ? "s" : ""}` : "Token"}
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
               </button>
-            ))}
+              {opsTokenDropdownOpen && (
+                <div
+                  className="absolute right-0 top-full mt-1 rounded-lg shadow-xl z-50 py-1 min-w-[160px]"
+                  style={{ background: "#1a1a1a", border: `1px solid ${CARD_BORDER}` }}
+                >
+                  <button
+                    onClick={() => { setOpsTokenFilter(new Set()); setOpsPage(1); }}
+                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#333] flex items-center gap-2"
+                    style={{ color: opsTokenFilter.size === 0 ? GOLD : "#888" }}
+                  >
+                    <span className="inline-block w-3 h-3 rounded-sm border" style={{ borderColor: "#555", background: opsTokenFilter.size === 0 ? GOLD : "transparent" }} />
+                    All Tokens
+                  </button>
+                  {(() => {
+                    const allTokens = [
+                      ...STRATEGIC_PRESETS.map(p => p.ticker),
+                      "\u20B8USD", "WETH", "USDC",
+                    ];
+                    return allTokens.map(t => {
+                      const selected = opsTokenFilter.has(t);
+                      return (
+                        <button
+                          key={t}
+                          onClick={() => {
+                            setOpsTokenFilter(prev => {
+                              const next = new Set(prev);
+                              if (next.has(t)) next.delete(t);
+                              else next.add(t);
+                              return next;
+                            });
+                            setOpsPage(1);
+                          }}
+                          className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#333] flex items-center gap-2"
+                          style={{ color: selected ? "#fff" : "#888" }}
+                        >
+                          <span className="inline-block w-3 h-3 rounded-sm border" style={{ borderColor: "#555", background: selected ? GOLD : "transparent" }} />
+                          {t}
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Table */}
