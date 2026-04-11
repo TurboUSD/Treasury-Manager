@@ -2467,19 +2467,19 @@ const Home: NextPage = () => {
         <StatCard
           title={`\u20B8USD Burned`}
           value={fmtBig(tusdBurnedNum)}
-          subtitle={`${fmtPct(burnPct)} of supply (${fmtUsdShort(burnUsd)})`}
+          subtitle={`${fmtUsdShort(burnUsd)} \u00b7 ${fmtPct(burnPct)}`}
         />
         <StatCard
           title={`\u20B8USD Bought`}
           value={fmtBig(totalBuybackTusd)}
-          subtitle={`${fmtPct(buybackPct)} of supply (${fmtUsdShort(buybackUsd)})`}
+          subtitle={`${fmtUsdShort(buybackUsd)} \u00b7 ${fmtPct(buybackPct)}`}
         />
         <StatCard
           title={`\u20B8USD Locked`}
           value={totalLockedTusd > 0 ? fmtBig(totalLockedTusd) : "\u2014"}
           subtitle={
             totalLockedTusd > 0
-              ? `${fmtPct((totalLockedTusd / tusdSupplyNum) * 100)} of supply (${fmtUsdShort(totalLockedTusd * tusdPriceUsd)})`
+              ? `${fmtUsdShort(totalLockedTusd * tusdPriceUsd)} \u00b7 ${fmtPct((totalLockedTusd / tusdSupplyNum) * 100)}`
               : "No locked tokens"
           }
         />
@@ -2488,7 +2488,7 @@ const Home: NextPage = () => {
       {/* Zero ₸USD Sold Banner */}
       <div className="max-w-4xl w-full px-4 mb-8 sm:flex sm:justify-center">
         <div
-          className="relative rounded-xl overflow-hidden px-5 py-4 flex items-center gap-4 sm:gap-5 w-full sm:max-w-[60%]"
+          className="relative rounded-xl overflow-hidden px-5 py-4 flex items-center gap-4 sm:gap-10 w-full sm:max-w-[60%]"
           style={{
             background: "linear-gradient(135deg, #002a10 0%, #00150a 100%)",
             border: "1px solid #0f5a2a",
@@ -2497,8 +2497,7 @@ const Home: NextPage = () => {
           {/* Text */}
           <div className="flex-1 min-w-0">
             <div className="text-xs sm:text-sm" style={{ color: "#2cab6f" }}>
-              No function in the contract to sell {`\u20B8USD`}. Not disabled, not paused; it doesn{"'"}t exist. Fully
-              verifiable onchain.
+              No function in the contract to sell or withdraw {`\u20B8USD`}. It only locks, buys, and burns it. Fully verifiable onchain.
             </div>
           </div>
           {/* Big zero */}
