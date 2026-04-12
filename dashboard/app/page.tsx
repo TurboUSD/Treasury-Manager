@@ -587,7 +587,7 @@ const HISTORICAL_OPS_RAW = [
   {
     type: "Buyback" as const,
     amount: "22,024,060 \u20B8USD",
-    token: "WETH",
+    token: "\u20B8USD",
     usdValue: "$100",
     date: "2026-03-18",
     txHash: "0x5c3aac4e5ff14e22313f485d01b19432fd1294acf1740055f3e77f0ce7c5362b",
@@ -689,6 +689,11 @@ function fmtBig(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(2)}K`;
   return Math.round(n).toString();
+}
+
+/** Full number with thousand separators, no decimals: 3838664 → "3,838,664" */
+function fmtFull(n: number): string {
+  return Math.round(n).toLocaleString("en-US");
 }
 
 /** Compact an amount string like "22,024,060 ₸USD" → "22M ₸USD" for mobile */
@@ -2233,7 +2238,7 @@ const Home: NextPage = () => {
     );
   }, [chartView, strategicRows]);
 
-  const filteredOps = useMemo(() => {
+  const { filtered: filteredOps, allOpsUnfiltered: allOpsForFilter } = useMemo(() => {
     const allOps: Operation[] = HISTORICAL_OPS_RAW.map(op => {
       let usdValue: string;
       if (op.tusdAmount > 0 && tusdPriceUsd > 0) {
@@ -2276,35 +2281,40 @@ const Home: NextPage = () => {
 
         if (opType === "StrategicBuy") {
           const ticker = tokenToTicker[(op.token_address || "").toLowerCase()] || (op.buy_currency || "");
-          amount = `${fmtBig(op.buy_amount || 0)} ${ticker}`;
+          amount = `${fmtFull(op.buy_amount || 0)} ${ticker}`;
           token = ticker;
           const histWeth = op.weth_price_usd || wethPriceUsd;
           usdValue = histWeth > 0 && op.sell_amount ? fmtUsd(op.sell_amount * histWeth) : "\u2014";
         } else if (opType === "Buyback") {
-          amount = amount || `${fmtBig(op.buy_amount || 0)} \u20B8USD`;
-          token = op.sell_currency || "WETH";
-          const histWethBB = op.weth_price_usd || wethPriceUsd;
-          usdValue = histWethBB > 0 && op.sell_amount ? fmtUsd(op.sell_amount * histWethBB) : "\u2014";
+          amount = amount || `${fmtFull(op.buy_amount || 0)} \u20B8USD`;
+          token = "\u20B8USD";
+          const sellCur = (op.sell_currency || "WETH").toUpperCase();
+          if (sellCur === "USDC") {
+            usdValue = op.sell_amount ? fmtUsd(op.sell_amount) : "\u2014";
+          } else {
+            const histWethBB = op.weth_price_usd || wethPriceUsd;
+            usdValue = histWethBB > 0 && op.sell_amount ? fmtUsd(op.sell_amount * histWethBB) : "\u2014";
+          }
         } else if (opType === "Burn") {
           const tusdAmt = op.sell_amount || 0;
-          amount = amount || `${fmtBig(tusdAmt)} \u20B8USD`;
+          amount = amount || `${fmtFull(tusdAmt)} \u20B8USD`;
           token = "\u20B8USD";
           const histTusd = op.token_price_usd || tusdPriceUsd;
           usdValue = histTusd > 0 ? fmtUsd(tusdAmt * histTusd) : "\u2014";
         } else if (opType === "Stake") {
           const tusdAmt = op.sell_amount || 0;
-          amount = amount || `${fmtBig(tusdAmt)} \u20B8USD`;
+          amount = amount || `${fmtFull(tusdAmt)} \u20B8USD`;
           token = "\u20B8USD";
           const histTusd = op.token_price_usd || tusdPriceUsd;
           usdValue = histTusd > 0 ? fmtUsd(tusdAmt * histTusd) : "\u2014";
         } else if (opType === "BurnEngine") {
           const tusdAmt = op.sell_amount || 0;
-          amount = amount || `${fmtBig(tusdAmt)} \u20B8USD`;
+          amount = amount || `${fmtFull(tusdAmt)} \u20B8USD`;
           token = "\u20B8USD";
           const histTusd = op.token_price_usd || tusdPriceUsd;
           usdValue = histTusd > 0 ? fmtUsd(tusdAmt * histTusd) : "\u2014";
         } else if (opType === "Rebalance") {
-          amount = amount || `${fmtBig(op.sell_amount || 0)} ${op.sell_currency || ""}`;
+          amount = amount || `${fmtFull(op.sell_amount || 0)} ${op.sell_currency || ""}`;
           token = op.buy_currency || "";
           usdValue = "\u2014";
         } else {
@@ -2329,7 +2339,7 @@ const Home: NextPage = () => {
     if (newEngineBurned > 0) {
       allOps.push({
         type: "BurnEngine",
-        amount: `${fmtBig(newEngineBurned)} \u20B8USD`,
+        amount: `${fmtFull(newEngineBurned)} \u20B8USD`,
         token: "\u20B8USD",
         usdValue: fmtUsd(newEngineBurned * tusdPriceUsd),
         date: engineLastCycle ? engineLastCycle.toISOString().slice(0, 10) : "\u2014",
@@ -2339,6 +2349,9 @@ const Home: NextPage = () => {
 
     // Default: newest first (reverse chronological)
     allOps.reverse();
+
+    // Save unfiltered list for token dropdown
+    const allOpsUnfiltered = [...allOps];
 
     // Apply type filter (empty set = all types)
     let filtered = opsTypeFilter.size === 0
@@ -2371,7 +2384,7 @@ const Home: NextPage = () => {
       });
     }
 
-    return filtered;
+    return { filtered, allOpsUnfiltered };
   }, [
     opsTypeFilter,
     opsTokenFilter,
@@ -2437,7 +2450,7 @@ const Home: NextPage = () => {
     BurnEngine: "#ff6b6b",
     Rebalance: "#5b8dee",
     Stake: "#ffcf72",
-    StrategicBuy: "#c2660a",
+    StrategicBuy: "rgb(232, 144, 55)",
     StrategicSell: "#fb923c",
     FeeClaim: "#4ade80",
   };
@@ -3168,19 +3181,16 @@ const Home: NextPage = () => {
                     All Tokens
                   </button>
                   {(() => {
-                    // Build token list from actual operations in the table
+                    // Build token list from processed operations (already have correct token names)
                     const tokenSet = new Set<string>();
-                    const allDbOps = apiData?.operations ?? [];
-                    for (const op of allDbOps) {
-                      const tk = tokenToTicker[(op.token_address || "").toLowerCase()] || op.buy_currency || op.sell_currency || "";
-                      if (tk) tokenSet.add(tk);
-                    }
-                    // Also add tokens from hardcoded historical ops
-                    for (const op of filteredOps) {
+                    for (const op of allOpsForFilter) {
                       if (op.token) tokenSet.add(op.token);
                     }
                     tokenSet.delete("");
                     tokenSet.delete("ETH");
+                    tokenSet.delete("WETH");
+                    tokenSet.delete("USDC");
+                    tokenSet.delete("TUSD2");
                     const allTokens = Array.from(tokenSet).sort();
                     return allTokens.map(t => {
                       const selected = opsTokenFilter.has(t);
@@ -3264,7 +3274,7 @@ const Home: NextPage = () => {
                         <span
                           className="badge badge-xs sm:badge-sm font-mono"
                           style={{
-                            background: `${badgeColor[op.type] ?? "#888"}40`,
+                            background: op.type === "StrategicBuy" ? "rgb(223 119 15 / 36%)" : `${badgeColor[op.type] ?? "#888"}40`,
                             color: badgeColor[op.type] ?? "#888",
                             border: "none",
                             fontSize: "inherit",
