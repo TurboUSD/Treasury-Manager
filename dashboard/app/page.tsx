@@ -691,8 +691,14 @@ function fmtBig(n: number): string {
   return Math.round(n).toString();
 }
 
-/** Full number with thousand separators, no decimals: 3838664 → "3,838,664" */
+/** Full number with thousand separators: 3838664 → "3,838,664", 0.0018 → "0.0018" */
 function fmtFull(n: number): string {
+  if (n === 0) return "0";
+  // For small numbers (< 1), show at least 2 significant digits
+  if (Math.abs(n) < 1) {
+    const digits = Math.max(2, -Math.floor(Math.log10(Math.abs(n))) + 1);
+    return n.toFixed(digits);
+  }
   return Math.round(n).toLocaleString("en-US");
 }
 
