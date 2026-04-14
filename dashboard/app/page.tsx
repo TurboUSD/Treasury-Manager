@@ -2269,8 +2269,8 @@ const Home: NextPage = () => {
         if (op.tx_hash && hardcodedTxHashes.has(op.tx_hash)) continue;
         // Skip Other Fee gas rows (they supplement the main row, not shown separately)
         if (op.type === "Other Fee" && op.sell_currency === "ETH") continue;
-        const txKey = `${op.tx_hash || ""}_${op.op_type || ""}`;
-        // For multi-row ops, deduplicate by tx_hash+op_type
+        const txKey = `${op.tx_hash || ""}_${op.op_type || ""}_${op.buy_currency || ""}`;
+        // For multi-row ops, deduplicate by tx_hash+op_type+buy_currency
         if (op.tx_hash && seenTx.has(txKey)) continue;
         if (op.tx_hash) seenTx.add(txKey);
 
@@ -2319,7 +2319,8 @@ const Home: NextPage = () => {
           const displayCur = cur === "TUSD2" ? "\u20B8USD" : cur;
           amount = `${fmtFull(amt)} ${displayCur}`;
           token = "\u20B8USD";
-          usdValue = "\u2014";
+          const price = op.token_price_usd || (cur === "WETH" ? wethPriceUsd : tusdPriceUsd);
+          usdValue = amt > 0 && price > 0 ? fmtUsd(amt * price) : "\u2014";
         } else if (opType === "Rebalance") {
           amount = amount || `${fmtFull(op.sell_amount || 0)} ${op.sell_currency || ""}`;
           token = op.buy_currency || "";
@@ -2339,19 +2340,6 @@ const Home: NextPage = () => {
           txHash: op.tx_hash || "",
         });
       }
-    }
-
-    // Only add a dynamic entry for NEW BurnEngine burns beyond the known historical ones
-    const newEngineBurned = engineBurned - KNOWN_ENGINE_BURNED;
-    if (newEngineBurned > 0) {
-      allOps.push({
-        type: "BurnEngine",
-        amount: `${fmtFull(newEngineBurned)} \u20B8USD`,
-        token: "\u20B8USD",
-        usdValue: fmtUsd(newEngineBurned * tusdPriceUsd),
-        date: engineLastCycle ? engineLastCycle.toISOString().slice(0, 10) : "\u2014",
-        txHash: "",
-      });
     }
 
     // Default: newest first (reverse chronological)
@@ -2395,11 +2383,8 @@ const Home: NextPage = () => {
   }, [
     opsTypeFilter,
     opsTokenFilter,
-    engineCycles,
-    engineBurned,
     tusdPriceUsd,
     wethPriceUsd,
-    engineLastCycle,
     opsSort,
     apiData?.operations,
     tokenToTicker,
@@ -3000,7 +2985,7 @@ const Home: NextPage = () => {
           <StatCard
             title="Cycles"
             value={`${engineCycles} execution${engineCycles !== 1 ? "s" : ""}`}
-            subtitle={engineLastCycle ? `Last: ${engineLastCycle.toLocaleDateString()}` : "No cycles yet"}
+            subtitle={engineLastCycle ? `Last: ${engineLastCycle.toISOString().slice(0, 10)}` : "No cycles yet"}
           />
         </div>
       </div>

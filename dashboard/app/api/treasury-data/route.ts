@@ -408,9 +408,13 @@ export async function GET() {
           { addr: WETH_ADDR as `0x${string}`, currency: "WETH", dec: 18 },
         ];
 
-        // Accumulate: txHash → { tusd: number, weth: number, block: bigint }
-        const feeTxMap = new Map<string, { tusd: number; weth: number; block: bigint }>();
+        // Accumulate: txHash → { tusd: number, weth: number, buybackTusd: number, buybackWeth: number, block: bigint }
+        // tusd/weth = fee rewards from fee sources
+        // buybackTusd/buybackWeth = compound buyback (₸USD from pool, WETH spent by BurnEngine)
+        const feeTxMap = new Map<string, { tusd: number; weth: number; buybackTusd: number; buybackWeth: number; block: bigint }>();
+        const feeSourcesLower = feeSources.map(s => s.toLowerCase());
 
+        // Step 1: Fee rewards — transfers FROM fee sources TO BurnEngine
         for (const src of feeSources) {
           for (const ft of feeTokens) {
             const logs = await client.getLogs({
@@ -421,17 +425,59 @@ export async function GET() {
               toBlock: currentBlock,
             });
             for (const log of logs) {
-              // Exclude inter-source transfers (redistribution)
-              const toAddr = (log.args as { to: string }).to?.toLowerCase();
-              if (feeSources.some(s => s.toLowerCase() === toAddr)) continue;
-
               const txHash = log.transactionHash;
               const val = Number(formatEther((log.args as { value: bigint }).value));
-              const entry = feeTxMap.get(txHash) || { tusd: 0, weth: 0, block: log.blockNumber };
+              const entry = feeTxMap.get(txHash) || { tusd: 0, weth: 0, buybackTusd: 0, buybackWeth: 0, block: log.blockNumber };
               if (ft.currency === "TUSD2") entry.tusd += val;
               else entry.weth += val;
               feeTxMap.set(txHash, entry);
             }
+          }
+        }
+
+        // Step 2: Compound buyback detection — in fee claim txs, find:
+        //   - ₸USD arriving at BurnEngine from NON-fee-sources (= from Uniswap pool swap)
+        //   - WETH leaving BurnEngine to NON-fee-sources (= spent on swap)
+        // Only check txs that had fee claims (already in feeTxMap)
+        if (feeTxMap.size > 0) {
+          // ₸USD transfers TO BurnEngine (from any source)
+          const tusdToBurnEngine = await client.getLogs({
+            address: TUSD as `0x${string}`,
+            event: transferEvent,
+            args: { to: BURN_ENGINE as `0x${string}` },
+            fromBlock,
+            toBlock: currentBlock,
+          });
+          for (const log of tusdToBurnEngine) {
+            const txHash = log.transactionHash;
+            if (!feeTxMap.has(txHash)) continue; // only in fee claim txs
+            const fromAddr = ((log.args as { from: string }).from || "").toLowerCase();
+            // Skip if from a fee source (that's a fee reward, not a buyback)
+            if (feeSourcesLower.includes(fromAddr)) continue;
+            // Skip if from dead address
+            if (fromAddr === DEAD.toLowerCase()) continue;
+            const val = Number(formatEther((log.args as { value: bigint }).value));
+            const entry = feeTxMap.get(txHash)!;
+            entry.buybackTusd += val;
+          }
+
+          // WETH transfers FROM BurnEngine (spent on swap)
+          const wethFromBurnEngine = await client.getLogs({
+            address: WETH_ADDR as `0x${string}`,
+            event: transferEvent,
+            args: { from: BURN_ENGINE as `0x${string}` },
+            fromBlock,
+            toBlock: currentBlock,
+          });
+          for (const log of wethFromBurnEngine) {
+            const txHash = log.transactionHash;
+            if (!feeTxMap.has(txHash)) continue;
+            const toAddr = ((log.args as { to: string }).to || "").toLowerCase();
+            // Skip if to a fee source (redistribution)
+            if (feeSourcesLower.includes(toAddr)) continue;
+            const val = Number(formatEther((log.args as { value: bigint }).value));
+            const entry = feeTxMap.get(txHash)!;
+            entry.buybackWeth += val;
           }
         }
 
@@ -475,7 +521,7 @@ export async function GET() {
             if (!insertErr) newOpsInserted++;
           }
 
-          // WETH row (if any WETH was collected)
+          // WETH row (if any WETH was collected as fee reward)
           if (agg.weth > 0) {
             const row = {
               type: "Reward",
@@ -498,6 +544,40 @@ export async function GET() {
             };
             const { error: insertErr } = await sb.from("operations").insert([row]);
             if (!insertErr) newOpsInserted++;
+          }
+
+          // Compound buyback: BurnEngine used WETH to buy ₸USD in the same tx
+          if (agg.buybackTusd > 0) {
+            // Check if a Buyback row already exists for this tx (AMI may have written it)
+            const { data: existingBB } = await sb
+              .from("operations")
+              .select("id")
+              .eq("tx_hash", txHash)
+              .eq("op_type", "Buyback")
+              .limit(1);
+            if (!existingBB || existingBB.length === 0) {
+              const bbRow = {
+                type: "Trade",
+                buy_amount: agg.buybackTusd,
+                buy_currency: "TUSD2",
+                sell_amount: agg.buybackWeth > 0 ? agg.buybackWeth : null,
+                sell_currency: agg.buybackWeth > 0 ? "WETH" : null,
+                exchange: "Treasury Manager",
+                group_name: "Buyback",
+                comment: basescanLink,
+                op_type: "Buyback",
+                amount_raw: `${Math.round(agg.buybackTusd).toLocaleString("en-US")} \u20B8USD`,
+                weth_price_usd: wethPriceUsd,
+                token_price_usd: tusdPriceUsd,
+                tx_hash: txHash,
+                block_number: Number(agg.block),
+                date_utc: toIsoUtc(ts),
+                date_madrid: toMadridCT(ts),
+                source: "scanner",
+              };
+              const { error: insertErr } = await sb.from("operations").insert([bbRow]);
+              if (!insertErr) newOpsInserted++;
+            }
           }
         }
 
