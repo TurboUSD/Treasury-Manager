@@ -2368,10 +2368,20 @@ const Home: NextPage = () => {
     {
       const col = opsSort?.col ?? "date";
       const dir = opsSort?.dir ?? "desc";
+      // Sub-sort for same-date ops (fee claim tx produces 4 rows with same date)
+      // Desc order (top→bottom): BurnEngine, Buyback, FeeClaim WETH, FeeClaim ₸USD
+      const typeRank = (op: Operation): number => {
+        if (op.type === "BurnEngine") return 4;
+        if (op.type === "Buyback") return 3;
+        if (op.type === "FeeClaim" && op.amount.includes("WETH")) return 2;
+        if (op.type === "FeeClaim") return 1;
+        return 0;
+      };
       filtered.sort((a, b) => {
         let cmp = 0;
         if (col === "date") {
           cmp = a.date.localeCompare(b.date);
+          if (cmp === 0) cmp = typeRank(a) - typeRank(b);
         } else if (col === "usd") {
           const aVal = parseFloat(a.usdValue.replace(/[^0-9.-]/g, "")) || 0;
           const bVal = parseFloat(b.usdValue.replace(/[^0-9.-]/g, "")) || 0;

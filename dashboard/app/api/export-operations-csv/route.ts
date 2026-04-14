@@ -23,10 +23,10 @@ export async function GET(request: Request) {
     const from = url.searchParams.get("from");
     const to = url.searchParams.get("to");
 
+    // Fetch all ops — filtering is done in JS after fetching
     let query = sb
       .from("operations")
       .select("*")
-      .not("op_type", "in", "(BurnEngine,FeeClaim)")
       .order("date_utc", { ascending: true });
 
     if (from) query = query.gte("date_utc", `${from}T00:00:00Z`);
@@ -42,6 +42,22 @@ export async function GET(request: Request) {
       return new Response("No operations found", { status: 404 });
     }
 
+    // Fee claim transactions: only export the "Other Fee" (gas) row, and only
+    // if AMI wrote it (source !== "scanner"). All other rows in a fee claim tx
+    // (FeeClaim rewards, compound Buyback, BurnEngine) are dashboard-only.
+    // 1) Collect tx_hashes that contain any FeeClaim op_type
+    const feeClaimTxHashes = new Set(
+      ops.filter(op => op.op_type === "FeeClaim").map(op => op.tx_hash).filter(Boolean),
+    );
+    // 2) Filter: for fee claim txs keep only AMI-written Other Fee; for others keep all
+    const filteredOps = ops.filter(op => {
+      if (op.tx_hash && feeClaimTxHashes.has(op.tx_hash)) {
+        // In a fee claim tx: only keep Other Fee written by AMI
+        return op.type === "Other Fee" && op.source !== "scanner";
+      }
+      return true;
+    });
+
     const headers = [
       "Type", "Buy", "Cur.", "Sell", "Cur.", "Fee", "Cur.",
       "Exchange", "Group", "Comment", "Trade ID", "Imported From",
@@ -52,7 +68,7 @@ export async function GET(request: Request) {
     const rows: string[] = [];
     rows.push(headers.map(h => q(h)).join(","));
 
-    for (const op of ops) {
+    for (const op of filteredOps) {
       const dateMadrid = op.date_madrid || "";
 
       let buyAmt = op.buy_amount != null ? Number(op.buy_amount) : null;

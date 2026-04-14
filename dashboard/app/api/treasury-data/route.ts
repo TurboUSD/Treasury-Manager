@@ -335,17 +335,38 @@ export async function GET() {
       lastScannedBlock = currentBlock > 4_320_000n ? currentBlock - 4_320_000n : 0n;
     }
 
-    const fromBlock = lastScannedBlock + 1n;
+    const scanFromBlock = lastScannedBlock + 1n;
     let newOpsInserted = 0;
+    const SCAN_CHUNK = 10_000n; // Max blocks per RPC getLogs call
 
-    if (fromBlock <= currentBlock) {
+    // Helper: split a block range into chunks and collect all logs
+    async function getLogsChunked<T>(params: {
+      address: `0x${string}`;
+      event: any;
+      args?: any;
+      fromBlock: bigint;
+      toBlock: bigint;
+    }): Promise<T[]> {
+      const allLogs: T[] = [];
+      let from = params.fromBlock;
+      while (from <= params.toBlock) {
+        const to = from + SCAN_CHUNK - 1n > params.toBlock ? params.toBlock : from + SCAN_CHUNK - 1n;
+        const logs = await client.getLogs({ ...params, fromBlock: from, toBlock: to });
+        allLogs.push(...(logs as T[]));
+        from = to + 1n;
+      }
+      return allLogs;
+    }
+
+    if (scanFromBlock <= currentBlock) {
+      // ── BurnEngine CycleExecuted events ───────────────────────────────
+      // Exchange: "BurnEngine", Type: "Burn"
+      // Separate try/catch so FeeClaim scanner runs even if this fails
       try {
-        // ── BurnEngine CycleExecuted events ───────────────────────────────
-        // Exchange: "BurnEngine", Type: "Burn"
-        const cycleLogs = await client.getLogs({
+        const cycleLogs = await getLogsChunked<any>({
           address: BURN_ENGINE as `0x${string}`,
           event: burnEngineCycleEvent,
-          fromBlock,
+          fromBlock: scanFromBlock,
           toBlock: currentBlock,
         });
 
@@ -391,17 +412,21 @@ export async function GET() {
           const { error: insertErr } = await sb.from("operations").insert([row]);
           if (!insertErr) newOpsInserted++;
         }
+        console.log(`[Scanner] BurnEngine: scanned ${scanFromBlock}→${currentBlock}, found ${cycleLogs.length} events`);
+      } catch (e) {
+        console.error(`[Scanner] BurnEngine FAILED (${scanFromBlock}→${currentBlock}):`, e);
+      }
 
-        // ── Fee claims (FeeClaim) ─────────────────────────────────────────
-        // Fee source addresses that send ₸USD and WETH to BurnEngine:
-        //   - LP_FEE_SOURCE  (0x33e2…) — Legacy fee contract
-        //   - LEGACY_FEE_SOURCE (0x1eaf…) — Clanker LP Locker / creator rewards
-        // Strategy:
-        //   1) Fetch all TUSD + WETH transfers FROM both sources TO BurnEngine
-        //   2) Group by tx_hash — sum all TUSD together, WETH separately
-        //   3) Dedup by tx_hash + op_type (if AMI already wrote it, skip)
-        //   4) Insert max 2 rows per tx: one TUSD, one WETH
-
+      // ── Fee claims (FeeClaim) ─────────────────────────────────────────
+      // Fee source addresses that send ₸USD and WETH to BurnEngine:
+      //   - LP_FEE_SOURCE  (0x33e2…) — Legacy fee contract
+      //   - LEGACY_FEE_SOURCE (0x1eaf…) — Clanker LP Locker / creator rewards
+      // Strategy:
+      //   1) Fetch all TUSD + WETH transfers FROM both sources TO BurnEngine
+      //   2) Group by tx_hash — sum all TUSD together, WETH separately
+      //   3) Dedup by tx_hash + op_type (if AMI already wrote it, skip)
+      //   4) Insert max 2 rows per tx: one TUSD, one WETH
+      try {
         const feeSources = [LEGACY_FEE_SOURCE, LP_FEE_SOURCE] as `0x${string}`[];
         const feeTokens = [
           { addr: TUSD as `0x${string}`, currency: "TUSD2", dec: 18 },
@@ -417,11 +442,11 @@ export async function GET() {
         // Step 1: Fee rewards — transfers FROM fee sources TO BurnEngine
         for (const src of feeSources) {
           for (const ft of feeTokens) {
-            const logs = await client.getLogs({
+            const logs = await getLogsChunked<any>({
               address: ft.addr,
               event: transferEvent,
               args: { from: src, to: BURN_ENGINE as `0x${string}` },
-              fromBlock,
+              fromBlock: scanFromBlock,
               toBlock: currentBlock,
             });
             for (const log of logs) {
@@ -441,11 +466,11 @@ export async function GET() {
         // Only check txs that had fee claims (already in feeTxMap)
         if (feeTxMap.size > 0) {
           // ₸USD transfers TO BurnEngine (from any source)
-          const tusdToBurnEngine = await client.getLogs({
+          const tusdToBurnEngine = await getLogsChunked<any>({
             address: TUSD as `0x${string}`,
             event: transferEvent,
             args: { to: BURN_ENGINE as `0x${string}` },
-            fromBlock,
+            fromBlock: scanFromBlock,
             toBlock: currentBlock,
           });
           for (const log of tusdToBurnEngine) {
@@ -462,11 +487,11 @@ export async function GET() {
           }
 
           // WETH transfers FROM BurnEngine (spent on swap)
-          const wethFromBurnEngine = await client.getLogs({
+          const wethFromBurnEngine = await getLogsChunked<any>({
             address: WETH_ADDR as `0x${string}`,
             event: transferEvent,
             args: { from: BURN_ENGINE as `0x${string}` },
-            fromBlock,
+            fromBlock: scanFromBlock,
             toBlock: currentBlock,
           });
           for (const log of wethFromBurnEngine) {
@@ -580,15 +605,20 @@ export async function GET() {
             }
           }
         }
+        console.log(`[Scanner] FeeClaim: scanned ${scanFromBlock}→${currentBlock}, found ${feeTxMap.size} fee txs`);
+      } catch (e) {
+        console.error(`[Scanner] FeeClaim FAILED (${scanFromBlock}→${currentBlock}):`, e);
+      }
 
-        // Update scan state
+      // Update scan state (always, even if one section failed — the other may have succeeded)
+      try {
         await sb.from("scan_state").upsert({
           key: "last_block",
           block_number: Number(currentBlock),
           updated_at: new Date().toISOString(),
         });
       } catch (e) {
-        console.error("Passive event scan error:", e);
+        console.error("[Scanner] Failed to update scan_state:", e);
       }
     }
 

@@ -15,10 +15,10 @@ export async function GET(request: Request) {
     const from = url.searchParams.get("from");
     const to = url.searchParams.get("to");
 
+    // Fetch all ops — filtering is done in JS after fetching
     let query = sb
       .from("operations")
       .select("*")
-      .not("op_type", "in", "(BurnEngine,FeeClaim)")
       .order("date_utc", { ascending: true });
 
     if (from) query = query.gte("date_utc", `${from}T00:00:00Z`);
@@ -33,6 +33,19 @@ export async function GET(request: Request) {
     if (!ops || ops.length === 0) {
       return new Response("No operations found", { status: 404 });
     }
+
+    // Fee claim transactions: only export the "Other Fee" (gas) row, and only
+    // if AMI wrote it (source !== "scanner"). All other rows in a fee claim tx
+    // (FeeClaim rewards, compound Buyback, BurnEngine) are dashboard-only.
+    const feeClaimTxHashes = new Set(
+      ops.filter(op => op.op_type === "FeeClaim").map(op => op.tx_hash).filter(Boolean),
+    );
+    const filteredOps = ops.filter(op => {
+      if (op.tx_hash && feeClaimTxHashes.has(op.tx_hash)) {
+        return op.type === "Other Fee" && op.source !== "scanner";
+      }
+      return true;
+    });
 
     // Dynamic import — keeps exceljs out of the webpack bundle
     const ExcelJS = (await import("exceljs")).default;
@@ -58,7 +71,7 @@ export async function GET(request: Request) {
 
     // Data rows
     const keepFull = new Set(["ETH", "WETH", "USDC"]);
-    for (const op of ops) {
+    for (const op of filteredOps) {
       const dateMadrid = op.date_madrid || "";
 
       let buyAmt: number | null = op.buy_amount != null ? Number(op.buy_amount) : null;
