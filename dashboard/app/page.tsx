@@ -2313,6 +2313,13 @@ const Home: NextPage = () => {
           token = "\u20B8USD";
           const histTusd = op.token_price_usd || tusdPriceUsd;
           usdValue = histTusd > 0 ? fmtUsd(tusdAmt * histTusd) : "\u2014";
+        } else if (opType === "FeeClaim") {
+          const cur = op.buy_currency || "";
+          const amt = op.buy_amount || 0;
+          const displayCur = cur === "TUSD2" ? "\u20B8USD" : cur;
+          amount = `${fmtFull(amt)} ${displayCur}`;
+          token = "\u20B8USD";
+          usdValue = "\u2014";
         } else if (opType === "Rebalance") {
           amount = amount || `${fmtFull(op.sell_amount || 0)} ${op.sell_currency || ""}`;
           token = op.buy_currency || "";
@@ -3044,60 +3051,16 @@ const Home: NextPage = () => {
             className="flex items-center gap-2 p-3 sm:p-4"
             style={{ borderBottom: `1px solid ${CARD_BORDER}` }}
           >
-            {/* Desktop: inline type buttons (multi-select) */}
-            <div className="hidden sm:flex gap-2 overflow-x-auto flex-nowrap flex-1" style={{ WebkitOverflowScrolling: "touch" }}>
-              {[
-                { v: "all", l: "All" },
-                { v: "buyback", l: "Buyback" },
-                { v: "burn", l: "Burn" },
-                { v: "rebalance", l: "Rebalance" },
-                { v: "stake", l: "Stake" },
-                { v: "burnengine", l: "BurnEngine" },
-                { v: "strategicbuy", l: "Str.Buy" },
-                { v: "strategicsell", l: "Str.Sell" },
-              ].map(({ v, l }) => {
-                const isAll = v === "all";
-                const active = isAll ? opsTypeFilter.size === 0 : opsTypeFilter.has(v);
-                return (
-                  <button
-                    key={v}
-                    onClick={() => {
-                      if (isAll) {
-                        setOpsTypeFilter(new Set());
-                      } else {
-                        setOpsTypeFilter(prev => {
-                          const next = new Set(prev);
-                          if (next.has(v)) next.delete(v);
-                          else next.add(v);
-                          return next;
-                        });
-                      }
-                      setOpsPage(1);
-                    }}
-                    className="btn btn-xs sm:btn-sm shrink-0"
-                    style={{
-                      background: active ? GOLD : "transparent",
-                      border: `1px solid ${active ? GOLD : "#4f4f4f"}`,
-                      color: active ? "#000" : "#888",
-                      fontSize: "12px",
-                    }}
-                  >
-                    {l}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Mobile: Type dropdown (multi-select, same style as Token) */}
-            <div ref={opsTypeDropdownRef} className="sm:hidden relative shrink-0">
+            {/* Type dropdown — both desktop and mobile */}
+            <div ref={opsTypeDropdownRef} className="relative shrink-0">
               <button
                 onClick={() => setOpsTypeDropdownOpen(prev => !prev)}
-                className="btn btn-xs"
+                className="btn btn-xs sm:btn-sm"
                 style={{
                   background: opsTypeFilter.size > 0 ? GOLD : "transparent",
                   border: `1px solid ${opsTypeFilter.size > 0 ? GOLD : "#4f4f4f"}`,
                   color: opsTypeFilter.size > 0 ? "#000" : "#888",
-                  fontSize: "11px",
+                  fontSize: "12px",
                   gap: "4px",
                 }}
               >
@@ -3117,6 +3080,7 @@ const Home: NextPage = () => {
                     { v: "rebalance", l: "Rebalance" },
                     { v: "stake", l: "Stake" },
                     { v: "burnengine", l: "BurnEngine" },
+                    { v: "feeclaim", l: "FeeClaim" },
                     { v: "strategicbuy", l: "Str.Buy" },
                     { v: "strategicsell", l: "Str.Sell" },
                   ].map(({ v, l }) => {

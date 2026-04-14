@@ -392,159 +392,113 @@ export async function GET() {
           if (!insertErr) newOpsInserted++;
         }
 
-        // ── Permissionless fee claims ─────────────────────────────────────
-        // When LegacyFeeClaimer (0x2c85...) is called, it triggers:
-        //   1) TUSD from LEGACY_FEE_SOURCE → BurnEngine  (Exchange: "Legacy Fee Claim")
-        //   2) TUSD from LP_FEE_SOURCE → BurnEngine       (Exchange: "BurnEngine")
-        //   3) WETH from LP_FEE_SOURCE → BurnEngine       (Exchange: "BurnEngine")
-        // All three can happen in the SAME tx — dedup uses tx_hash + exchange + buy_currency.
-        //
-        // Group for all fee claims: "Fee Claim", Type: "Reward"
+        // ── Fee claims (FeeClaim) ─────────────────────────────────────────
+        // Fee source addresses that send ₸USD and WETH to BurnEngine:
+        //   - LP_FEE_SOURCE  (0x33e2…) — Legacy fee contract
+        //   - LEGACY_FEE_SOURCE (0x1eaf…) — Clanker LP Locker / creator rewards
+        // Strategy:
+        //   1) Fetch all TUSD + WETH transfers FROM both sources TO BurnEngine
+        //   2) Group by tx_hash — sum all TUSD together, WETH separately
+        //   3) Dedup by tx_hash + op_type (if AMI already wrote it, skip)
+        //   4) Insert max 2 rows per tx: one TUSD, one WETH
 
-        // 1) Legacy TUSD fees: LEGACY_FEE_SOURCE → BurnEngine
-        const legacyTusdLogs = await client.getLogs({
-          address: TUSD as `0x${string}`,
-          event: transferEvent,
-          args: { from: LEGACY_FEE_SOURCE as `0x${string}`, to: BURN_ENGINE as `0x${string}` },
-          fromBlock,
-          toBlock: currentBlock,
-        });
+        const feeSources = [LEGACY_FEE_SOURCE, LP_FEE_SOURCE] as `0x${string}`[];
+        const feeTokens = [
+          { addr: TUSD as `0x${string}`, currency: "TUSD2", dec: 18 },
+          { addr: WETH_ADDR as `0x${string}`, currency: "WETH", dec: 18 },
+        ];
 
-        for (const log of legacyTusdLogs) {
-          const { data: existing } = await sb
-            .from("operations")
-            .select("id")
-            .eq("tx_hash", log.transactionHash)
-            .eq("op_type", "FeeClaim")
-            .eq("exchange", "Legacy Fee Claim")
-            .limit(1);
-          if (existing && existing.length > 0) continue;
+        // Accumulate: txHash → { tusd: number, weth: number, block: bigint }
+        const feeTxMap = new Map<string, { tusd: number; weth: number; block: bigint }>();
 
-          const amount = Number(formatEther((log.args as { value: bigint }).value));
-          const blockDiff = Number(currentBlock - log.blockNumber);
-          const ts = Math.floor(Date.now() / 1000) - blockDiff * 2;
-          const basescanLink = `https://basescan.org/tx/${log.transactionHash}`;
+        for (const src of feeSources) {
+          for (const ft of feeTokens) {
+            const logs = await client.getLogs({
+              address: ft.addr,
+              event: transferEvent,
+              args: { from: src, to: BURN_ENGINE as `0x${string}` },
+              fromBlock,
+              toBlock: currentBlock,
+            });
+            for (const log of logs) {
+              // Exclude inter-source transfers (redistribution)
+              const toAddr = (log.args as { to: string }).to?.toLowerCase();
+              if (feeSources.some(s => s.toLowerCase() === toAddr)) continue;
 
-          const row = {
-            type: "Reward",
-            buy_amount: amount,
-            buy_currency: "TUSD2",
-            sell_amount: null,
-            sell_currency: null,
-            exchange: "Legacy Fee Claim",
-            group_name: "Fee Claim",
-            comment: basescanLink,
-            op_type: "FeeClaim",
-            amount_raw: `${amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} TUSD (Legacy fee claim)`,
-            weth_price_usd: wethPriceUsd,
-            token_price_usd: tusdPriceUsd,
-            tx_hash: log.transactionHash,
-            block_number: Number(log.blockNumber),
-            date_utc: toIsoUtc(ts),
-            date_madrid: toMadridCT(ts),
-            source: "scanner",
-          };
-
-          const { error: insertErr } = await sb.from("operations").insert([row]);
-          if (!insertErr) newOpsInserted++;
+              const txHash = log.transactionHash;
+              const val = Number(formatEther((log.args as { value: bigint }).value));
+              const entry = feeTxMap.get(txHash) || { tusd: 0, weth: 0, block: log.blockNumber };
+              if (ft.currency === "TUSD2") entry.tusd += val;
+              else entry.weth += val;
+              feeTxMap.set(txHash, entry);
+            }
+          }
         }
 
-        // 2) LP TUSD fees: LP_FEE_SOURCE → BurnEngine
-        const lpTusdLogs = await client.getLogs({
-          address: TUSD as `0x${string}`,
-          event: transferEvent,
-          args: { from: LP_FEE_SOURCE as `0x${string}`, to: BURN_ENGINE as `0x${string}` },
-          fromBlock,
-          toBlock: currentBlock,
-        });
-
-        for (const log of lpTusdLogs) {
+        // Insert aggregated rows per tx
+        for (const [txHash, agg] of feeTxMap) {
+          // Dedup: if ANY FeeClaim row exists for this tx (from AMI or scanner), skip entirely
           const { data: existing } = await sb
             .from("operations")
             .select("id")
-            .eq("tx_hash", log.transactionHash)
+            .eq("tx_hash", txHash)
             .eq("op_type", "FeeClaim")
-            .eq("exchange", "BurnEngine")
-            .eq("buy_currency", "TUSD2")
             .limit(1);
           if (existing && existing.length > 0) continue;
 
-          const amount = Number(formatEther((log.args as { value: bigint }).value));
-          const blockDiff = Number(currentBlock - log.blockNumber);
+          const blockDiff = Number(currentBlock - agg.block);
           const ts = Math.floor(Date.now() / 1000) - blockDiff * 2;
-          const basescanLink = `https://basescan.org/tx/${log.transactionHash}`;
+          const basescanLink = `https://basescan.org/tx/${txHash}`;
 
-          const row = {
-            type: "Reward",
-            buy_amount: amount,
-            buy_currency: "TUSD2",
-            sell_amount: null,
-            sell_currency: null,
-            exchange: "BurnEngine",
-            group_name: "Fee Claim",
-            comment: basescanLink,
-            op_type: "FeeClaim",
-            amount_raw: `${amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} TUSD (LP fee claim)`,
-            weth_price_usd: wethPriceUsd,
-            token_price_usd: tusdPriceUsd,
-            tx_hash: log.transactionHash,
-            block_number: Number(log.blockNumber),
-            date_utc: toIsoUtc(ts),
-            date_madrid: toMadridCT(ts),
-            source: "scanner",
-          };
+          // TUSD row (sum of all sources)
+          if (agg.tusd > 0) {
+            const row = {
+              type: "Reward",
+              buy_amount: agg.tusd,
+              buy_currency: "TUSD2",
+              sell_amount: null,
+              sell_currency: null,
+              exchange: "Treasury Manager",
+              group_name: "AMI 9000",
+              comment: basescanLink,
+              op_type: "FeeClaim",
+              amount_raw: `${Math.round(agg.tusd).toLocaleString("en-US")} \u20B8USD`,
+              weth_price_usd: wethPriceUsd,
+              token_price_usd: tusdPriceUsd,
+              tx_hash: txHash,
+              block_number: Number(agg.block),
+              date_utc: toIsoUtc(ts),
+              date_madrid: toMadridCT(ts),
+              source: "scanner",
+            };
+            const { error: insertErr } = await sb.from("operations").insert([row]);
+            if (!insertErr) newOpsInserted++;
+          }
 
-          const { error: insertErr } = await sb.from("operations").insert([row]);
-          if (!insertErr) newOpsInserted++;
-        }
-
-        // 3) LP WETH fees: LP_FEE_SOURCE → BurnEngine
-        const lpWethLogs = await client.getLogs({
-          address: WETH_ADDR as `0x${string}`,
-          event: transferEvent,
-          args: { from: LP_FEE_SOURCE as `0x${string}`, to: BURN_ENGINE as `0x${string}` },
-          fromBlock,
-          toBlock: currentBlock,
-        });
-
-        for (const log of lpWethLogs) {
-          const { data: existing } = await sb
-            .from("operations")
-            .select("id")
-            .eq("tx_hash", log.transactionHash)
-            .eq("op_type", "FeeClaim")
-            .eq("exchange", "BurnEngine")
-            .eq("buy_currency", "WETH")
-            .limit(1);
-          if (existing && existing.length > 0) continue;
-
-          const amount = Number(formatEther((log.args as { value: bigint }).value));
-          const blockDiff = Number(currentBlock - log.blockNumber);
-          const ts = Math.floor(Date.now() / 1000) - blockDiff * 2;
-          const basescanLink = `https://basescan.org/tx/${log.transactionHash}`;
-
-          const row = {
-            type: "Reward",
-            buy_amount: amount,
-            buy_currency: "WETH",
-            sell_amount: null,
-            sell_currency: null,
-            exchange: "BurnEngine",
-            group_name: "Fee Claim",
-            comment: basescanLink,
-            op_type: "FeeClaim",
-            amount_raw: `${amount.toLocaleString("en-US", { maximumFractionDigits: 6 })} WETH (LP fee claim)`,
-            weth_price_usd: wethPriceUsd,
-            token_price_usd: tusdPriceUsd,
-            tx_hash: log.transactionHash,
-            block_number: Number(log.blockNumber),
-            date_utc: toIsoUtc(ts),
-            date_madrid: toMadridCT(ts),
-            source: "scanner",
-          };
-
-          const { error: insertErr } = await sb.from("operations").insert([row]);
-          if (!insertErr) newOpsInserted++;
+          // WETH row (if any WETH was collected)
+          if (agg.weth > 0) {
+            const row = {
+              type: "Reward",
+              buy_amount: agg.weth,
+              buy_currency: "WETH",
+              sell_amount: null,
+              sell_currency: null,
+              exchange: "Treasury Manager",
+              group_name: "AMI 9000",
+              comment: basescanLink,
+              op_type: "FeeClaim",
+              amount_raw: `${agg.weth.toFixed(6)} WETH`,
+              weth_price_usd: wethPriceUsd,
+              token_price_usd: wethPriceUsd,
+              tx_hash: txHash,
+              block_number: Number(agg.block),
+              date_utc: toIsoUtc(ts),
+              date_madrid: toMadridCT(ts),
+              source: "scanner",
+            };
+            const { error: insertErr } = await sb.from("operations").insert([row]);
+            if (!insertErr) newOpsInserted++;
+          }
         }
 
         // Update scan state
