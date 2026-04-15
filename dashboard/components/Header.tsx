@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { hardhat } from "viem/chains";
@@ -107,7 +108,7 @@ function AmiIcon({ size = 34 }: { size?: number }) {
       let left = rect.left + rect.width / 2 - tipW / 2;
       if (left < 8) left = 8;
       if (left + tipW > window.innerWidth - 8) left = window.innerWidth - 8 - tipW;
-      setTipPos({ top: rect.bottom + window.scrollY + 8, left });
+      setTipPos({ top: rect.bottom + 8, left });
     }
   }, [active, smoothToggle]);
 
@@ -192,12 +193,13 @@ function AmiIcon({ size = 34 }: { size?: number }) {
           <circle cx="68" cy="180" r="38" fill="none" stroke="#72ff54" strokeWidth="1.5" opacity="0.35"/>
         </svg>
       </div>
-      {/* Tooltip */}
-      {active && tipPos && (
+      {/* Tooltip — portal to body so it escapes sticky header stacking context */}
+      {active && tipPos && typeof document !== "undefined" && createPortal(
         <div
           ref={tipRef}
-          className="fixed z-[99999] shadow-xl"
           style={{
+            position: "fixed",
+            zIndex: 99999,
             background: "#111",
             border: "1px solid #0f5a2a",
             borderRadius: 10,
@@ -205,23 +207,25 @@ function AmiIcon({ size = 34 }: { size?: number }) {
             minWidth: 200,
             top: tipPos.top,
             left: tipPos.left,
+            boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
             animation: "amiFadeIn 180ms ease",
           }}
         >
-          <span className="block mb-1.5 text-[13px] font-semibold text-white pl-[1.15em]">AMI 9000</span>
+          <span style={{ display: "block", marginBottom: 6, fontSize: 13, fontWeight: 600, color: "#fff", paddingLeft: "1.15em" }}>AMI 9000</span>
           {[
             { label: "What it does?", href: "https://turbousd.com/ami" },
             { label: "Agent Architecture", href: "https://turbousd.com/agent-architecture/" },
             { label: "Talk to AMI", href: "https://t.me/Turbo_USD" },
           ].map(link => (
-            <span key={link.href} className="block mb-1 text-[13px]" style={{ whiteSpace: "nowrap" }}>
-              <span className="text-[#ccc]">{"\u2192 "}</span>
-              <a href={link.href} target="_blank" rel="noopener noreferrer" className="text-[#bdbdbd] no-underline hover:text-[#43e397] transition-colors">
+            <span key={link.href} style={{ display: "block", marginBottom: 4, fontSize: 13, whiteSpace: "nowrap" }}>
+              <span style={{ color: "#ccc" }}>{"\u2192 "}</span>
+              <a href={link.href} target="_blank" rel="noopener noreferrer" style={{ color: "#bdbdbd", textDecoration: "none", transition: "color 0.2s" }} onMouseEnter={e => (e.currentTarget.style.color = "#43e397")} onMouseLeave={e => (e.currentTarget.style.color = "#bdbdbd")}>
                 {link.label}
               </a>
             </span>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
