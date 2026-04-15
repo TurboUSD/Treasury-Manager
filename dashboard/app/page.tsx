@@ -1883,22 +1883,17 @@ const Home: NextPage = () => {
   const [opsPage, setOpsPage] = useState(1);
   const [opsPerPage, setOpsPerPage] = useState(10);
   const [opsTypeFilter, setOpsTypeFilter] = useState<Set<string>>(new Set());
-  const [opsTypeDropdownOpen, setOpsTypeDropdownOpen] = useState(false);
-  const opsTypeDropdownRef = useRef<HTMLDivElement>(null);
   const [opsTokenFilter, setOpsTokenFilter] = useState<Set<string>>(new Set());
-  const [opsTokenDropdownOpen, setOpsTokenDropdownOpen] = useState(false);
-  const opsTokenDropdownRef = useRef<HTMLDivElement>(null);
+  const [opsFilterOpen, setOpsFilterOpen] = useState(false);
+  const opsFilterRef = useRef<HTMLDivElement>(null);
   const opsSectionRef = useRef<HTMLDivElement>(null);
   const [opsShowUsd, setOpsShowUsd] = useState(false);
 
-  // Close dropdowns on outside click
+  // Close filter dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (opsTokenDropdownRef.current && !opsTokenDropdownRef.current.contains(e.target as Node)) {
-        setOpsTokenDropdownOpen(false);
-      }
-      if (opsTypeDropdownRef.current && !opsTypeDropdownRef.current.contains(e.target as Node)) {
-        setOpsTypeDropdownOpen(false);
+      if (opsFilterRef.current && !opsFilterRef.current.contains(e.target as Node)) {
+        setOpsFilterOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -3047,144 +3042,6 @@ const Home: NextPage = () => {
           className="rounded-xl text-xs sm:text-sm"
           style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}`, overflow: "visible" }}
         >
-          {/* Filter bar */}
-          <div
-            className="flex items-center gap-2 p-3 sm:p-4"
-            style={{ borderBottom: `1px solid ${CARD_BORDER}` }}
-          >
-            {/* Type dropdown — both desktop and mobile */}
-            <div ref={opsTypeDropdownRef} className="relative shrink-0">
-              <button
-                onClick={() => setOpsTypeDropdownOpen(prev => !prev)}
-                className="btn btn-xs sm:btn-sm"
-                style={{
-                  background: opsTypeFilter.size > 0 ? GOLD : "transparent",
-                  border: `1px solid ${opsTypeFilter.size > 0 ? GOLD : "#4f4f4f"}`,
-                  color: opsTypeFilter.size > 0 ? "#000" : "#888",
-                  fontSize: "12px",
-                  gap: "4px",
-                }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
-                {opsTypeFilter.size > 0 ? `${opsTypeFilter.size} type${opsTypeFilter.size > 1 ? "s" : ""}` : "All Types"}
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
-              </button>
-              {opsTypeDropdownOpen && (
-                <div
-                  className="absolute left-0 top-full mt-1 rounded-lg shadow-xl z-50 py-1 min-w-[160px]"
-                  style={{ background: "#1a1a1a", border: `1px solid ${CARD_BORDER}` }}
-                >
-                  {[
-                    { v: "all", l: "All Types" },
-                    { v: "buyback", l: "Buyback" },
-                    { v: "burn", l: "Burn" },
-                    { v: "rebalance", l: "Rebalance" },
-                    { v: "stake", l: "Stake" },
-                    { v: "burnengine", l: "BurnEngine" },
-                    { v: "feeclaim", l: "FeeClaim" },
-                    { v: "strategicbuy", l: "Str.Buy" },
-                    { v: "strategicsell", l: "Str.Sell" },
-                  ].map(({ v, l }) => {
-                    const isAll = v === "all";
-                    const selected = isAll ? opsTypeFilter.size === 0 : opsTypeFilter.has(v);
-                    return (
-                      <button
-                        key={v}
-                        onClick={() => {
-                          if (isAll) {
-                            setOpsTypeFilter(new Set());
-                          } else {
-                            setOpsTypeFilter(prev => {
-                              const next = new Set(prev);
-                              if (next.has(v)) next.delete(v);
-                              else next.add(v);
-                              return next;
-                            });
-                          }
-                          setOpsPage(1);
-                        }}
-                        className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#333] flex items-center gap-2"
-                        style={{ color: selected ? (isAll ? GOLD : "#fff") : "#888" }}
-                      >
-                        <span className="inline-block w-3 h-3 rounded-sm border" style={{ borderColor: "#555", background: selected ? GOLD : "transparent" }} />
-                        {l}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Token dropdown — both desktop and mobile */}
-            <div ref={opsTokenDropdownRef} className="relative ml-auto shrink-0">
-              <button
-                onClick={() => setOpsTokenDropdownOpen(prev => !prev)}
-                className="btn btn-xs sm:btn-sm"
-                style={{
-                  background: opsTokenFilter.size > 0 ? GOLD : "transparent",
-                  border: `1px solid ${opsTokenFilter.size > 0 ? GOLD : "#4f4f4f"}`,
-                  color: opsTokenFilter.size > 0 ? "#000" : "#888",
-                  fontSize: "12px",
-                  gap: "4px",
-                }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
-                {opsTokenFilter.size > 0 ? `${opsTokenFilter.size} token${opsTokenFilter.size > 1 ? "s" : ""}` : "All Tokens"}
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9" /></svg>
-              </button>
-              {opsTokenDropdownOpen && (
-                <div
-                  className="absolute right-0 top-full mt-1 rounded-lg shadow-xl z-50 py-1 min-w-[160px]"
-                  style={{ background: "#1a1a1a", border: `1px solid ${CARD_BORDER}` }}
-                >
-                  <button
-                    onClick={() => { setOpsTokenFilter(new Set()); setOpsPage(1); }}
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#333] flex items-center gap-2"
-                    style={{ color: opsTokenFilter.size === 0 ? GOLD : "#888" }}
-                  >
-                    <span className="inline-block w-3 h-3 rounded-sm border" style={{ borderColor: "#555", background: opsTokenFilter.size === 0 ? GOLD : "transparent" }} />
-                    All Tokens
-                  </button>
-                  {(() => {
-                    // Build token list from processed operations (already have correct token names)
-                    const tokenSet = new Set<string>();
-                    for (const op of allOpsForFilter) {
-                      if (op.token) tokenSet.add(op.token);
-                    }
-                    tokenSet.delete("");
-                    tokenSet.delete("ETH");
-                    tokenSet.delete("WETH");
-                    tokenSet.delete("USDC");
-                    tokenSet.delete("TUSD2");
-                    const allTokens = Array.from(tokenSet).sort();
-                    return allTokens.map(t => {
-                      const selected = opsTokenFilter.has(t);
-                      return (
-                        <button
-                          key={t}
-                          onClick={() => {
-                            setOpsTokenFilter(prev => {
-                              const next = new Set(prev);
-                              if (next.has(t)) next.delete(t);
-                              else next.add(t);
-                              return next;
-                            });
-                            setOpsPage(1);
-                          }}
-                          className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#333] flex items-center gap-2"
-                          style={{ color: selected ? "#fff" : "#888" }}
-                        >
-                          <span className="inline-block w-3 h-3 rounded-sm border" style={{ borderColor: "#555", background: selected ? GOLD : "transparent" }} />
-                          {t}
-                        </button>
-                      );
-                    });
-                  })()}
-                </div>
-              )}
-            </div>
-          </div>
-
           {/* Table */}
           <div className="overflow-x-auto">
             <table className="table table-xs sm:table-sm ops-table" style={{ color: "#e8e8e8" }}>
@@ -3194,7 +3051,113 @@ const Home: NextPage = () => {
                     className="text-[10px] sm:text-xs uppercase tracking-wider"
                     style={{ color: TEXT_MUTED, background: "transparent" }}
                   >
-                    Type
+                    <div ref={opsFilterRef} className="relative inline-flex items-center gap-1">
+                      Type
+                      <button
+                        onClick={() => setOpsFilterOpen(prev => !prev)}
+                        className="inline-flex items-center justify-center"
+                        style={{ color: (opsTypeFilter.size > 0 || opsTokenFilter.size > 0) ? GOLD : TEXT_MUTED }}
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
+                      </button>
+                      {opsFilterOpen && (
+                        <div
+                          className="absolute left-0 top-full mt-1 rounded-lg shadow-xl z-50 py-2 px-3"
+                          style={{ background: "#1a1a1a", border: `1px solid ${CARD_BORDER}`, minWidth: "280px" }}
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <div className="flex gap-5">
+                            {/* Left column: Types */}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: TEXT_DIM }}>Types</div>
+                              {[
+                                { v: "all", l: "All Types" },
+                                { v: "buyback", l: "Buyback" },
+                                { v: "burn", l: "Burn" },
+                                { v: "rebalance", l: "Rebalance" },
+                                { v: "stake", l: "Stake" },
+                                { v: "burnengine", l: "BurnEngine" },
+                                { v: "feeclaim", l: "FeeClaim" },
+                                { v: "strategicbuy", l: "Str.Buy" },
+                                { v: "strategicsell", l: "Str.Sell" },
+                              ].map(({ v, l }) => {
+                                const isAll = v === "all";
+                                const selected = isAll ? opsTypeFilter.size === 0 : opsTypeFilter.has(v);
+                                return (
+                                  <button
+                                    key={v}
+                                    onClick={() => {
+                                      if (isAll) {
+                                        setOpsTypeFilter(new Set());
+                                      } else {
+                                        setOpsTypeFilter(prev => {
+                                          const next = new Set(prev);
+                                          if (next.has(v)) next.delete(v);
+                                          else next.add(v);
+                                          return next;
+                                        });
+                                      }
+                                      setOpsPage(1);
+                                    }}
+                                    className="w-full text-left py-1 text-xs hover:bg-[#333] flex items-center gap-2 rounded px-1"
+                                    style={{ color: selected ? (isAll ? GOLD : "#fff") : "#888" }}
+                                  >
+                                    <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: selected ? GOLD : "transparent" }} />
+                                    {l}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {/* Right column: Tokens */}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: TEXT_DIM }}>Tokens</div>
+                              <button
+                                onClick={() => { setOpsTokenFilter(new Set()); setOpsPage(1); }}
+                                className="w-full text-left py-1 text-xs hover:bg-[#333] flex items-center gap-2 rounded px-1"
+                                style={{ color: opsTokenFilter.size === 0 ? GOLD : "#888" }}
+                              >
+                                <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: opsTokenFilter.size === 0 ? GOLD : "transparent" }} />
+                                All Tokens
+                              </button>
+                              {(() => {
+                                const tokenSet = new Set<string>();
+                                for (const op of allOpsForFilter) {
+                                  if (op.token) tokenSet.add(op.token);
+                                }
+                                tokenSet.delete("");
+                                tokenSet.delete("ETH");
+                                tokenSet.delete("WETH");
+                                tokenSet.delete("USDC");
+                                tokenSet.delete("TUSD2");
+                                const allTokens = Array.from(tokenSet).sort();
+                                return allTokens.map(t => {
+                                  const selected = opsTokenFilter.has(t);
+                                  return (
+                                    <button
+                                      key={t}
+                                      onClick={() => {
+                                        setOpsTokenFilter(prev => {
+                                          const next = new Set(prev);
+                                          if (next.has(t)) next.delete(t);
+                                          else next.add(t);
+                                          return next;
+                                        });
+                                        setOpsPage(1);
+                                      }}
+                                      className="w-full text-left py-1 text-xs hover:bg-[#333] flex items-center gap-2 rounded px-1"
+                                      style={{ color: selected ? "#fff" : "#888" }}
+                                    >
+                                      <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: selected ? GOLD : "transparent" }} />
+                                      {t}
+                                    </button>
+                                  );
+                                });
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </th>
                   <th
                     className="text-[10px] sm:text-xs uppercase tracking-wider cursor-pointer select-none"
