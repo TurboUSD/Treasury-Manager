@@ -210,7 +210,7 @@ function AmiIcon({ size = 34 }: { size?: number }) {
           <span className="block mb-1.5 text-[13px] font-semibold text-white pl-[1.15em]">AMI 9000</span>
           {[
             { label: "What it does?", href: "https://turbousd.com/ami" },
-            { label: "Managed funds", href: "https://treasury.turbousd.com" },
+            { label: "Agent Architecture", href: "https://turbousd.com/agent-architecture/" },
             { label: "Talk to AMI", href: "https://t.me/Turbo_USD" },
           ].map(link => (
             <span key={link.href} className="block mb-1 text-[13px]" style={{ whiteSpace: "nowrap" }}>
