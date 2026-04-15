@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { hardhat } from "viem/chains";
@@ -57,6 +57,216 @@ function IconUniswap() {
         <path d="m6407 3814c-1-1-43-4-92-5-119-3-213-14-370-45-584-116-1240-417-1768-812-190-142-420-334-410-342 4-4 113-24 242-44 596-97 857-197 1176-453 61-48 239-215 396-369 157-155 324-310 370-344 192-144 433-218 674-207 104 4 136 10 223 39 137 47 201 87 308 193 78 77 98 103 137 185 58 118 76 214 72 365-5 198-51 310-169 423-122 115-253 170-426 179-113 6-195-9-274-49-134-67-226-206-228-343-2-136 66-236 191-280 71-25 80-17 18 18-73 41-123 89-138 134-19 59-7 183 23 234 84 143 269 207 452 158 60-16 165-72 223-118 76-60 123-159 130-275 11-170-35-296-151-412-118-118-233-161-401-151-222 13-483 168-589 350-137 233-101 537 86 742 154 168 362 247 628 240 239-6 429-71 640-220 293-207 445-429 730-1065 128-286 249-518 328-630 147-208 386-414 570-490 153-64 249-83 432-84 99 0 195 5 240 13 182 33 407 131 617 271 119 78 141 96 130 107-3 2-86-22-184-55-260-88-402-113-618-107-376 9-607 150-764 462-95 190-112 259-202 787-98 580-151 782-267 1011-175 348-409 574-787 760-273 134-529 200-860 220-117 7-334 13-338 9z" />
       </g>
     </svg>
+  );
+}
+
+/* ── AMI Eye Icon ─────────────────────────────────────────────────────────── */
+function AmiIcon({ size = 34 }: { size?: number }) {
+  const iconRef = useRef<HTMLDivElement>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(false);
+  const [tipPos, setTipPos] = useState<{ top: number; left: number } | null>(null);
+  const cleanupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const smoothToggle = useCallback((activate: boolean) => {
+    const icon = iconRef.current;
+    if (!icon) return;
+    const all = icon.querySelectorAll<SVGElement>(
+      ".ami-eye-glow,.ami-eye-core,.ami-eye-center-glow,.ami-eye-glow-boost,.ami-eye-core-boost,.ami-eye-fill-boost,.ami-eye-center-boost",
+    );
+    const boosts = icon.querySelectorAll<SVGElement>(
+      ".ami-eye-glow-boost,.ami-eye-core-boost,.ami-eye-fill-boost,.ami-eye-center-boost",
+    );
+    // Freeze at current opacity
+    all.forEach(el => { el.style.opacity = getComputedStyle(el).opacity; el.style.transition = "none"; });
+    boosts.forEach(el => { el.style.animation = "none"; });
+    // Flip class while frozen
+    if (activate) icon.classList.add("is-active");
+    else icon.classList.remove("is-active");
+    // Reflow
+    void icon.offsetWidth;
+    // Enable transition
+    all.forEach(el => { el.style.transition = "opacity 800ms ease-in-out"; el.style.opacity = ""; });
+    // Cleanup after transition
+    if (cleanupRef.current) clearTimeout(cleanupRef.current);
+    cleanupRef.current = setTimeout(() => {
+      all.forEach(el => { el.style.transition = ""; });
+      boosts.forEach(el => { el.style.animation = ""; });
+    }, 850);
+  }, []);
+
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const next = !active;
+    setActive(next);
+    smoothToggle(next);
+    if (next && iconRef.current) {
+      const rect = iconRef.current.getBoundingClientRect();
+      const tipW = 220;
+      let left = rect.left + rect.width / 2 - tipW / 2;
+      if (left < 8) left = 8;
+      if (left + tipW > window.innerWidth - 8) left = window.innerWidth - 8 - tipW;
+      setTipPos({ top: rect.bottom + window.scrollY + 8, left });
+    }
+  }, [active, smoothToggle]);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!active) return;
+    const handler = (e: MouseEvent) => {
+      if (iconRef.current?.contains(e.target as Node)) return;
+      if (tipRef.current?.contains(e.target as Node)) return;
+      setActive(false);
+      smoothToggle(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [active, smoothToggle]);
+
+  const svgHeight = size;
+
+  return (
+    <>
+      <div
+        ref={iconRef}
+        role="button"
+        tabIndex={0}
+        aria-label="AMI (Artificial Monetary Intelligence)"
+        className="ami-mini-icon"
+        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer", height: svgHeight, lineHeight: 0 }}
+        onClick={handleClick}
+        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleClick(e as unknown as React.MouseEvent); } }}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 136 286" style={{ height: svgHeight, width: "auto", display: "block" }}>
+          <defs>
+            <linearGradient id="frameGradH" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#f7f7f7"/><stop offset="18%" stopColor="#cfcfcf"/><stop offset="35%" stopColor="#8e8e8e"/>
+              <stop offset="50%" stopColor="#ececec"/><stop offset="68%" stopColor="#8a8a8a"/><stop offset="85%" stopColor="#d7d7d7"/><stop offset="100%" stopColor="#ffffff"/>
+            </linearGradient>
+            <linearGradient id="innerFrameGradH" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#0d1c10"/><stop offset="100%" stopColor="#051108"/>
+            </linearGradient>
+            <radialGradient id="panelGlowH" cx="50%" cy="55%" r="75%">
+              <stop offset="0%" stopColor="#0f2a15"/><stop offset="55%" stopColor="#08210e"/><stop offset="100%" stopColor="#021006"/>
+            </radialGradient>
+            <radialGradient id="lensCoreH" cx="50%" cy="52%" r="52%">
+              <stop offset="0%" stopColor="#dfff2c"/><stop offset="18%" stopColor="#9cff1f"/><stop offset="38%" stopColor="#24ff2f"/>
+              <stop offset="62%" stopColor="#00d31b"/><stop offset="82%" stopColor="#006e0b"/><stop offset="100%" stopColor="#045108"/>
+            </radialGradient>
+            <radialGradient id="lensOuterGlowH" cx="50%" cy="52%" r="60%">
+              <stop offset="0%" stopColor="#d8ff42" stopOpacity="0.95"/><stop offset="28%" stopColor="#67ff29" stopOpacity="0.9"/>
+              <stop offset="58%" stopColor="#18e11d" stopOpacity="0.15"/><stop offset="100%" stopColor="#000000" stopOpacity="0"/>
+            </radialGradient>
+            <radialGradient id="ringMetalH" cx="35%" cy="30%" r="90%">
+              <stop offset="0%" stopColor="#ffffff"/><stop offset="18%" stopColor="#d7d7d7"/><stop offset="38%" stopColor="#8d8d8d"/>
+              <stop offset="55%" stopColor="#fafafa"/><stop offset="72%" stopColor="#727272"/><stop offset="88%" stopColor="#d0d0d0"/><stop offset="100%" stopColor="#000000"/>
+            </radialGradient>
+            <radialGradient id="ringShadowH" cx="50%" cy="50%" r="65%">
+              <stop offset="65%" stopColor="#000000" stopOpacity="0"/><stop offset="100%" stopColor="#000000" stopOpacity="0.55"/>
+            </radialGradient>
+            <filter id="softGlowH" x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur stdDeviation="10" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <filter id="smallGlowH" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          <rect x="3" y="3" width="130" height="280" rx="10" fill="url(#frameGradH)"/>
+          <rect x="13" y="13" width="110" height="260" rx="6" fill="url(#innerFrameGradH)"/>
+          <rect x="13" y="13" width="110" height="260" rx="6" fill="url(#panelGlowH)"/>
+          <text x="68" y="42" fill="#ffffff" fontSize="18" fontFamily="Arial, Helvetica, sans-serif" fontWeight="700" textAnchor="middle" letterSpacing="2">AMI</text>
+          <ellipse cx="68" cy="183" rx="58" ry="58" fill="url(#ringShadowH)" opacity="0.7"/>
+          <circle cx="68" cy="180" r="52" fill="url(#ringMetalH)"/>
+          <circle cx="68" cy="180" r="43" fill="#000000"/>
+          <circle cx="68" cy="180" r="39" fill="#0c1a0d"/>
+          <circle className="ami-eye-glow" cx="68" cy="180" r="34" fill="url(#lensOuterGlowH)" filter="url(#softGlowH)"/>
+          <circle className="ami-eye-glow-boost" cx="68" cy="180" r="48" fill="url(#lensOuterGlowH)" filter="url(#softGlowH)"/>
+          <circle className="ami-eye-core" cx="68" cy="180" r="24" fill="url(#lensCoreH)"/>
+          <circle className="ami-eye-core-boost" cx="68" cy="180" r="36" fill="#6dff45"/>
+          <circle className="ami-eye-fill-boost" cx="68" cy="180" r="31" fill="#9dff58"/>
+          <circle className="ami-eye-center-glow" cx="68" cy="180" r="7" fill="#dfff35" filter="url(#smallGlowH)"/>
+          <circle className="ami-eye-center-boost" cx="68" cy="180" r="18" fill="#f0ff96"/>
+          <circle cx="68" cy="180" r="3" fill="#f5ff9d"/>
+          <circle cx="68" cy="180" r="51" fill="none" stroke="#ffffff" strokeWidth="2" opacity="0.45"/>
+          <circle cx="68" cy="180" r="38" fill="none" stroke="#72ff54" strokeWidth="1.5" opacity="0.35"/>
+        </svg>
+      </div>
+      {/* Tooltip */}
+      {active && tipPos && (
+        <div
+          ref={tipRef}
+          className="fixed rounded-[10px] z-[99999] shadow-xl"
+          style={{
+            background: "#111",
+            border: "1px solid #0f5a2a",
+            padding: "12px 16px",
+            minWidth: 200,
+            top: tipPos.top,
+            left: tipPos.left,
+            animation: "amiFadeIn 180ms ease",
+          }}
+        >
+          <span className="block mb-1.5 text-[13px] font-semibold text-white pl-[1.15em]">AMI 9000</span>
+          {[
+            { label: "What it does?", href: "https://turbousd.com/ami" },
+            { label: "Managed funds", href: "https://treasury.turbousd.com" },
+            { label: "Talk to AMI", href: "https://t.me/Turbo_USD" },
+          ].map(link => (
+            <span key={link.href} className="block mb-1 text-[13px]" style={{ whiteSpace: "nowrap" }}>
+              <span className="text-[#ccc]">{"\u2192 "}</span>
+              <a href={link.href} target="_blank" rel="noopener noreferrer" className="text-[#bdbdbd] no-underline hover:text-[#43e397] transition-colors">
+                {link.label}
+              </a>
+            </span>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ── AMI CSS (injected once) ──────────────────────────────────────────────── */
+function AmiStyles() {
+  return (
+    <style jsx global>{`
+      .ami-mini-icon { transition: transform 0.22s ease; }
+      .ami-mini-icon .ami-eye-glow,
+      .ami-mini-icon .ami-eye-core,
+      .ami-mini-icon .ami-eye-center-glow { transition: opacity 0.8s ease-in-out; }
+      .ami-mini-icon .ami-eye-glow   { opacity: 0.55; }
+      .ami-mini-icon .ami-eye-core   { opacity: 0.7; }
+      .ami-mini-icon .ami-eye-center-glow { opacity: 0.75; }
+      .ami-mini-icon .ami-eye-glow-boost,
+      .ami-mini-icon .ami-eye-core-boost,
+      .ami-mini-icon .ami-eye-fill-boost,
+      .ami-mini-icon .ami-eye-center-boost {
+        opacity: 0; transition: opacity 0.8s ease-in-out; will-change: opacity;
+      }
+      /* pulse animation (only when NOT active) */
+      .ami-mini-icon:not(.is-active) .ami-eye-glow-boost  { animation: amiGlowPulse 20s infinite ease-in-out; }
+      .ami-mini-icon:not(.is-active) .ami-eye-core-boost  { animation: amiCorePulse 20s infinite ease-in-out; }
+      .ami-mini-icon:not(.is-active) .ami-eye-fill-boost  { animation: amiFillPulse 20s infinite ease-in-out; }
+      .ami-mini-icon:not(.is-active) .ami-eye-center-boost { animation: amiCenterPulse 20s infinite ease-in-out; }
+      @keyframes amiGlowPulse   { 0%,16%,100%{opacity:0} 18%{opacity:0.18} 20%{opacity:1} 24%{opacity:1} 28%{opacity:0} }
+      @keyframes amiCorePulse   { 0%,16%,100%{opacity:0} 18%{opacity:0.18} 20%{opacity:0.58} 24%{opacity:0.58} 28%{opacity:0} }
+      @keyframes amiFillPulse   { 0%,16%,100%{opacity:0} 18%{opacity:0.18} 20%{opacity:0.52} 24%{opacity:0.52} 28%{opacity:0} }
+      @keyframes amiCenterPulse { 0%,16%,100%{opacity:0} 18%{opacity:0.2} 20%{opacity:1} 24%{opacity:1} 28%{opacity:0} }
+      /* hover */
+      .ami-mini-icon:hover .ami-eye-glow          { opacity: 0.75; }
+      .ami-mini-icon:hover .ami-eye-core           { opacity: 0.88; }
+      .ami-mini-icon:hover .ami-eye-center-glow    { opacity: 0.92; }
+      /* active (clicked, stays lit) */
+      .ami-mini-icon.is-active .ami-eye-glow          { opacity: 1; }
+      .ami-mini-icon.is-active .ami-eye-core           { opacity: 1; }
+      .ami-mini-icon.is-active .ami-eye-center-glow    { opacity: 1; }
+      .ami-mini-icon.is-active .ami-eye-glow-boost     { opacity: 1; }
+      .ami-mini-icon.is-active .ami-eye-core-boost     { opacity: 0.68; }
+      .ami-mini-icon.is-active .ami-eye-fill-boost     { opacity: 0.62; }
+      .ami-mini-icon.is-active .ami-eye-center-boost   { opacity: 1; }
+      .ami-mini-icon:focus-visible { outline: none; }
+      @keyframes amiFadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+    `}</style>
   );
 }
 
@@ -132,6 +342,7 @@ export const Header = () => {
 
   return (
     <div className="sticky top-0 z-20 w-full tusd-header" style={{ background: "#000000" }}>
+      <AmiStyles />
       <div className="flex items-center justify-between h-14 px-6 max-w-7xl mx-auto">
         <div className="flex items-center gap-4">
           <Link href="/" passHref className="flex items-center gap-2 shrink-0">
@@ -147,15 +358,21 @@ export const Header = () => {
           </ul>
         </div>
         <div className="flex items-center gap-3 shrink-0">
+          {/* Desktop: social icons + AMI */}
           <div className="hidden lg:flex items-center gap-2">
             {SOCIAL_LINKS.map(({ label, href, icon }) => (
               <a key={label} href={href} target="_blank" rel="noopener noreferrer" aria-label={label} className="text-[#a6a6a6] hover:text-[#43e397] transition-colors p-1">
                 {icon}
               </a>
             ))}
+            <AmiIcon size={34} />
           </div>
           <RainbowKitCustomConnectButton />
           {isLocalNetwork && <FaucetButton />}
+          {/* Mobile: AMI icon between Connect and burger */}
+          <div className="lg:hidden">
+            <AmiIcon size={26} />
+          </div>
           <button className="lg:hidden btn btn-ghost btn-sm px-1" onClick={() => setMobileOpen(prev => !prev)}>
             {mobileOpen ? <XMarkIcon className="h-5 w-5 text-[#888]" /> : <Bars3Icon className="h-5 w-5 text-[#888]" />}
           </button>
