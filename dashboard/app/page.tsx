@@ -702,9 +702,12 @@ function fmtFull(n: number): string {
   return Math.round(n).toLocaleString("en-US");
 }
 
-/** Compact an amount string like "22,024,060 ₸USD" → "22M ₸USD" for mobile */
+/** Compact an amount string like "22,024,060 ₸USD" → "22M ₸USD" for mobile.
+ *  Rules: >=1B → XB, >=1M → XM, >=1K → XK, all without decimals.
+ *  Small numbers (<1) keep significant digits (e.g. "0.0018 WETH"). */
 function compactAmount(s: string): string {
-  const m = s.match(/^([\d,]+)\s*(.*)$/);
+  // Match integers with commas or decimals like "0.0018"
+  const m = s.match(/^([\d,.]+)\s*(.*)$/);
   if (!m) return s;
   const num = Number(m[1].replace(/,/g, ""));
   const suffix = m[2];
@@ -2287,7 +2290,7 @@ const Home: NextPage = () => {
           const histWeth = op.weth_price_usd || wethPriceUsd;
           usdValue = histWeth > 0 && op.sell_amount ? fmtUsd(op.sell_amount * histWeth) : "\u2014";
         } else if (opType === "Buyback") {
-          amount = amount || `${fmtFull(op.buy_amount || 0)} \u20B8USD`;
+          amount = `${fmtFull(op.buy_amount || 0)} \u20B8USD`;
           token = "\u20B8USD";
           const sellCur = (op.sell_currency || "WETH").toUpperCase();
           if (sellCur === "USDC") {
@@ -2298,19 +2301,19 @@ const Home: NextPage = () => {
           }
         } else if (opType === "Burn") {
           const tusdAmt = op.sell_amount || 0;
-          amount = amount || `${fmtFull(tusdAmt)} \u20B8USD`;
+          amount = `${fmtFull(tusdAmt)} \u20B8USD`;
           token = "\u20B8USD";
           const histTusd = op.token_price_usd || tusdPriceUsd;
           usdValue = histTusd > 0 ? fmtUsd(tusdAmt * histTusd) : "\u2014";
         } else if (opType === "Stake") {
           const tusdAmt = op.sell_amount || 0;
-          amount = amount || `${fmtFull(tusdAmt)} \u20B8USD`;
+          amount = `${fmtFull(tusdAmt)} \u20B8USD`;
           token = "\u20B8USD";
           const histTusd = op.token_price_usd || tusdPriceUsd;
           usdValue = histTusd > 0 ? fmtUsd(tusdAmt * histTusd) : "\u2014";
         } else if (opType === "BurnEngine") {
           const tusdAmt = op.sell_amount || 0;
-          amount = amount || `${fmtFull(tusdAmt)} \u20B8USD`;
+          amount = `${fmtFull(tusdAmt)} \u20B8USD`;
           token = "\u20B8USD";
           const histTusd = op.token_price_usd || tusdPriceUsd;
           usdValue = histTusd > 0 ? fmtUsd(tusdAmt * histTusd) : "\u2014";
@@ -2323,7 +2326,7 @@ const Home: NextPage = () => {
           const price = op.token_price_usd || (cur === "WETH" ? wethPriceUsd : tusdPriceUsd);
           usdValue = amt > 0 && price > 0 ? fmtUsd(amt * price) : "\u2014";
         } else if (opType === "Rebalance") {
-          amount = amount || `${fmtFull(op.sell_amount || 0)} ${op.sell_currency || ""}`;
+          amount = `${fmtFull(op.sell_amount || 0)} ${op.sell_currency || ""}`;
           token = op.buy_currency || "";
           usdValue = "\u2014";
         } else {
@@ -3051,7 +3054,7 @@ const Home: NextPage = () => {
                     className="text-[10px] sm:text-xs uppercase tracking-wider"
                     style={{ color: TEXT_MUTED, background: "transparent" }}
                   >
-                    <div ref={opsFilterRef} className="relative inline-flex items-center gap-1">
+                    <div ref={opsFilterRef} className="inline-flex items-center gap-1">
                       Type
                       <button
                         onClick={() => setOpsFilterOpen(prev => !prev)}
@@ -3060,12 +3063,21 @@ const Home: NextPage = () => {
                       >
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
                       </button>
-                      {opsFilterOpen && (
-                        <div
-                          className="absolute left-0 top-full mt-1 rounded-lg shadow-xl z-50 py-2 px-3"
-                          style={{ background: "#1a1a1a", border: `1px solid ${CARD_BORDER}`, minWidth: "280px" }}
-                          onClick={e => e.stopPropagation()}
-                        >
+                      {opsFilterOpen && (() => {
+                        const rect = opsFilterRef.current?.getBoundingClientRect();
+                        return (
+                          <div
+                            className="fixed rounded-lg shadow-xl py-2 px-3"
+                            style={{
+                              background: "#1a1a1a",
+                              border: `1px solid ${CARD_BORDER}`,
+                              minWidth: "280px",
+                              zIndex: 9999,
+                              top: rect ? rect.bottom + 4 : 0,
+                              left: rect ? rect.left : 0,
+                            }}
+                            onClick={e => e.stopPropagation()}
+                          >
                           <div className="flex gap-5">
                             {/* Left column: Types */}
                             <div className="flex-1 min-w-0">
@@ -3156,7 +3168,8 @@ const Home: NextPage = () => {
                             </div>
                           </div>
                         </div>
-                      )}
+                        );
+                      })()}
                     </div>
                   </th>
                   <th
