@@ -196,10 +196,11 @@ function AmiIcon({ size = 34 }: { size?: number }) {
       {active && tipPos && (
         <div
           ref={tipRef}
-          className="fixed rounded-[10px] z-[99999] shadow-xl"
+          className="fixed z-[99999] shadow-xl"
           style={{
             background: "#111",
             border: "1px solid #0f5a2a",
+            borderRadius: 10,
             padding: "12px 16px",
             minWidth: 200,
             top: tipPos.top,
@@ -370,8 +371,8 @@ export const Header = () => {
           <RainbowKitCustomConnectButton />
           {isLocalNetwork && <FaucetButton />}
           {/* Mobile: AMI icon between Connect and burger */}
-          <div className="lg:hidden">
-            <AmiIcon size={26} />
+          <div className="lg:hidden flex items-center self-center">
+            <AmiIcon size={28} />
           </div>
           <button className="lg:hidden btn btn-ghost btn-sm px-1" onClick={() => setMobileOpen(prev => !prev)}>
             {mobileOpen ? <XMarkIcon className="h-5 w-5 text-[#888]" /> : <Bars3Icon className="h-5 w-5 text-[#888]" />}
