@@ -3061,7 +3061,7 @@ const Home: NextPage = () => {
                         className="inline-flex items-center justify-center"
                         style={{ color: (opsTypeFilter.size > 0 || opsTokenFilter.size > 0) ? GOLD : TEXT_MUTED }}
                       >
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill={(opsTypeFilter.size > 0 || opsTokenFilter.size > 0) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
                       </button>
                       {opsFilterOpen && (() => {
                         const rect = opsFilterRef.current?.getBoundingClientRect();
