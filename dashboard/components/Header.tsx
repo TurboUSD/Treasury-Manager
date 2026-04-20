@@ -213,7 +213,7 @@ function AmiIcon({ size = 34 }: { size?: number }) {
         >
           <span style={{ display: "block", marginBottom: 6, fontSize: 13, fontWeight: 600, color: "#fff", paddingLeft: "1.15em" }}>AMI 9000</span>
           {[
-            { label: "What it does?", href: "https://turbousd.com/ami" },
+            { label: "How it works", href: "https://turbousd.com/ami" },
             { label: "Agent Architecture", href: "https://turbousd.com/agent-architecture/" },
             { label: "Talk to AMI", href: "https://t.me/Turbo_USD" },
           ].map(link => (

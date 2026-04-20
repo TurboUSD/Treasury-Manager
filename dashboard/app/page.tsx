@@ -3010,7 +3010,7 @@ const Home: NextPage = () => {
       {/* Operations Table */}
       <div ref={opsSectionRef} className="max-w-4xl w-full px-4 mb-8">
         <div className="flex items-center justify-between" style={{ marginBottom: "-0.5rem" }}>
-          <SectionTitle>Operations</SectionTitle>
+          <SectionTitle>Treasury Activity</SectionTitle>
           {connectedAddress &&
             apiData &&
             (connectedAddress.toLowerCase() === apiData.ownerAddr?.toLowerCase() ||
