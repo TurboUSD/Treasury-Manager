@@ -42,17 +42,17 @@ export async function GET(request: Request) {
       return new Response("No operations found", { status: 404 });
     }
 
-    // Fee claim transactions: only export the "Other Fee" (gas) row, and only
-    // if AMI wrote it (source !== "scanner"). All other rows in a fee claim tx
-    // (FeeClaim rewards, compound Buyback, BurnEngine) are dashboard-only.
-    // 1) Collect tx_hashes that contain any FeeClaim op_type
-    const feeClaimTxHashes = new Set(
-      ops.filter(op => op.op_type === "FeeClaim").map(op => op.tx_hash).filter(Boolean),
+    // FeeClaim & Burn transactions: only export the "Other Fee" (gas) row,
+    // and only if AMI wrote it (source !== "scanner"). All other rows
+    // (Spend, FeeClaim rewards, Buyback, BurnEngine) are dashboard-only.
+    const dashboardOnlyTxHashes = new Set(
+      ops
+        .filter(op => op.op_type === "FeeClaim" || op.op_type === "BurnEngine")
+        .map(op => op.tx_hash)
+        .filter(Boolean),
     );
-    // 2) Filter: for fee claim txs keep only AMI-written Other Fee; for others keep all
     const filteredOps = ops.filter(op => {
-      if (op.tx_hash && feeClaimTxHashes.has(op.tx_hash)) {
-        // In a fee claim tx: only keep Other Fee written by AMI
+      if (op.tx_hash && dashboardOnlyTxHashes.has(op.tx_hash)) {
         return op.type === "Other Fee" && op.source !== "scanner";
       }
       return true;
