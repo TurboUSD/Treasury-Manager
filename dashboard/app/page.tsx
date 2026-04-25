@@ -2970,7 +2970,7 @@ const Home: NextPage = () => {
             </div>
 
             {/* Progress bars — 2 columns on desktop */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               {fwData.map(row => (
                 <div
                   key={row.ticker}
