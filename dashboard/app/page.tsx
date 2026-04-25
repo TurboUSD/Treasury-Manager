@@ -2090,12 +2090,16 @@ const Home: NextPage = () => {
   const burnPct = tusdSupplyNum > 0 ? (tusdBurnedNum / tusdSupplyNum) * 100 : 0;
   const burnUsd = tusdBurnedNum * tusdPriceUsd;
 
-  const treasuryBurnedTotal = apiData?.treasuryBurnedTotal ?? 0;
+  // Legacy burn from TreasuryManager v1 (not in Supabase)
+  const LEGACY_TREASURY_BURNED = 43_147_461;
+  const treasuryBurnedTotal = (apiData?.treasuryBurnedTotal ?? 0) + LEGACY_TREASURY_BURNED;
   const externalBurned = Math.max(0, tusdBurnedNum - engineBurned - treasuryBurnedTotal);
 
-  const totalBuybackTusd = apiData?.totalBuybackTusd ?? 0;
+  // Legacy buyback from TreasuryManager v1 (not in Supabase, paid with USDC)
+  const LEGACY_BUYBACK_USDC_TUSD = 22_024_060;
   const buybackWethTusd = apiData?.buybackWethTusd ?? 0;
-  const buybackUsdcTusd = apiData?.buybackUsdcTusd ?? 0;
+  const buybackUsdcTusd = (apiData?.buybackUsdcTusd ?? 0) + LEGACY_BUYBACK_USDC_TUSD;
+  const totalBuybackTusd = buybackWethTusd + buybackUsdcTusd;
   const buybackPct = tusdSupplyNum > 0 ? (totalBuybackTusd / tusdSupplyNum) * 100 : 0;
   const buybackUsd = totalBuybackTusd * tusdPriceUsd;
 
@@ -2530,7 +2534,7 @@ const Home: NextPage = () => {
           <p className="text-xs uppercase tracking-widest mb-2" style={{ color: GOLD }}>
             Managed Funds
           </p>
-          <p className="text-5xl font-bold text-white mt-2">{fmtUsd(totalManagedUsd + burnUsd)}</p>
+          <p className="text-5xl font-bold text-white mt-2">{fmtUsd(totalManagedUsd + (engineBurned + treasuryBurnedTotal) * tusdPriceUsd)}</p>
           <p className="text-xs mt-3" style={{ color: TEXT_DIM }}>
             {fmtUsdShort(totalManagedUsd)} excluding burns
           </p>
