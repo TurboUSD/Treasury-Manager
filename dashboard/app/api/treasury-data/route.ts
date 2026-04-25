@@ -63,8 +63,35 @@ const burnEngineGetStatus = parseAbiItem("function getStatus() view returns (uin
 const ownerAbi = parseAbiItem("function owner() view returns (address)");
 const operatorAbi = parseAbiItem("function authorizedOperator() view returns (address)");
 
+const poolFeeAbi = parseAbiItem("function fee() view returns (uint24)");
+
 const transferEvent = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 const burnEngineCycleEvent = parseAbiItem("event CycleExecuted(uint256 wethClaimed, uint256 tusdClaimed, uint256 wethSwapped, uint256 tusdFromSwap, uint256 totalTusdBurned, uint256 totalBurnedAllTime, uint256 timestamp)");
+
+// QuoterV2 on Base — marked as view so viem uses eth_call (standard Quoter pattern)
+const QUOTER_V2 = "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a";
+const quoterV2Abi = [{
+  name: "quoteExactInputSingle" as const,
+  type: "function" as const,
+  stateMutability: "view" as const,
+  inputs: [{
+    name: "params" as const,
+    type: "tuple" as const,
+    components: [
+      { name: "tokenIn" as const, type: "address" as const },
+      { name: "tokenOut" as const, type: "address" as const },
+      { name: "amountIn" as const, type: "uint256" as const },
+      { name: "fee" as const, type: "uint24" as const },
+      { name: "sqrtPriceLimitX96" as const, type: "uint160" as const },
+    ],
+  }],
+  outputs: [
+    { name: "amountOut" as const, type: "uint256" as const },
+    { name: "sqrtPriceX96After" as const, type: "uint160" as const },
+    { name: "initializedTicksCrossed" as const, type: "uint32" as const },
+    { name: "gasEstimate" as const, type: "uint256" as const },
+  ],
+}];
 
 // ── Price math ─────────────────────────────────────────────────────────────
 const Q192 = 2n ** 192n;
@@ -254,6 +281,14 @@ export async function GET() {
         functionName: "getSlot0" as const,
         args: [t.v4PoolId as `0x${string}`],
       })),
+      // 28-34: Strategic token total supplies (for flywheel MC calculation)
+      ...STRATEGIC_TOKENS.map(t => ({
+        address: t.address as `0x${string}`,
+        abi: [erc20TotalSupply] as const,
+        functionName: "totalSupply" as const,
+      })),
+      // 35: TUSD pool fee tier
+      { address: TUSD_POOL as `0x${string}`, abi: [poolFeeAbi] as const, functionName: "fee" as const },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ] as any;
     const results = await client.multicall({ contracts });
@@ -302,6 +337,16 @@ export async function GET() {
       stratPrices[t.ticker] = s0 ? calcV4TokenPriceUsd(s0[0], wethPriceUsd) : 0;
     });
 
+    // Strategic total supplies (indices 28-34)
+    const stratTotalSupply: Record<string, number> = {};
+    STRATEGIC_TOKENS.forEach((t, i) => {
+      const s = val(28 + i) as bigint | null;
+      stratTotalSupply[t.ticker] = s ? Number(formatEther(s)) : 0;
+    });
+
+    // TUSD pool fee tier (index 35)
+    const tusdPoolFee = (val(35) as number | null) ?? 10000;
+
     // Computed values
     const tusdBalNum = tusdBal ? Number(formatEther(tusdBal)) : 0;
     const wethBalNum = wethBal ? Number(formatEther(wethBal)) : 0;
@@ -333,6 +378,48 @@ export async function GET() {
     const strategicTotalUsd = strategicRows.reduce((s, r) => s + r.valueUsd, 0);
     const baseManagedUsd = tusdBalNum * tusdPriceUsd + wethBalNum * wethPriceUsd + usdcBalNum;
     const totalManagedUsd = baseManagedUsd + strategicTotalUsd;
+
+    // ── Flywheel: Quoter-simulated WETH→₸USD swaps at 100M MC ──────────
+    const FLYWHEEL_TARGET_MC = 100_000_000;
+    const flywheelTokens = strategicRows.filter(r => stratTotalSupply[r.ticker] > 0);
+    let flywheelData: { ticker: string; currentMC: number; progress: number; positionValueUsd: number; tusdQuoted: number }[] = [];
+    try {
+      flywheelData = await Promise.all(
+        flywheelTokens.map(async r => {
+          const totalSup = stratTotalSupply[r.ticker];
+          const currentMC = totalSup * r.currentPrice;
+          const progress = currentMC > 0 ? Math.min((currentMC / FLYWHEEL_TARGET_MC) * 100, 100) : 0;
+          const positionValueUsd = totalSup > 0 ? r.balance * (FLYWHEEL_TARGET_MC / totalSup) : 0;
+          const wethNeeded = wethPriceUsd > 0 ? positionValueUsd / wethPriceUsd : 0;
+
+          let tusdQuoted = 0;
+          if (wethNeeded > 0.001) {
+            try {
+              const wethWei = BigInt(Math.floor(wethNeeded * 1e18));
+              const result = await client.readContract({
+                address: QUOTER_V2 as `0x${string}`,
+                abi: quoterV2Abi,
+                functionName: "quoteExactInputSingle",
+                args: [{
+                  tokenIn: WETH_ADDR as `0x${string}`,
+                  tokenOut: TUSD as `0x${string}`,
+                  amountIn: wethWei,
+                  fee: tusdPoolFee,
+                  sqrtPriceLimitX96: 0n,
+                }],
+              });
+              tusdQuoted = Number(formatEther((result as readonly [bigint, ...unknown[]])[0]));
+            } catch (quoterErr) {
+              console.error(`[Flywheel] Quoter failed for ${r.ticker}:`, quoterErr);
+              tusdQuoted = tusdPriceUsd > 0 ? positionValueUsd / tusdPriceUsd : 0;
+            }
+          }
+          return { ticker: r.ticker, currentMC, progress, positionValueUsd, tusdQuoted };
+        }),
+      );
+    } catch (e) {
+      console.error("[Flywheel] computation failed:", e);
+    }
 
     // 3. Incremental scanner — PASSIVE EVENTS ONLY
     //    AMI 9000 is the sole writer for operations it initiates (StrategicBuy,
@@ -767,6 +854,7 @@ export async function GET() {
       strategicTotalUsd,
       totalManagedUsd,
       chartData: fullChart,
+      flywheelData,
       currentBlock: Number(currentBlock),
     };
 
