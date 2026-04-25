@@ -2021,6 +2021,8 @@ const Home: NextPage = () => {
       positionValueUsd: number;
       tusdQuoted: number;
     }[];
+    flywheelTotalTusdQuoted: number;
+    tusdPoolBalNum: number;
     chartData: {
       date: string;
       dateRaw?: string;
@@ -2891,25 +2893,31 @@ const Home: NextPage = () => {
                 return { ticker: row.preset.ticker, currentMC, progress, positionValueUsd, tusdQuoted };
               });
         if (fwData.length === 0) return null;
-        const totalPotentialTusd = fwData.reduce((s, r) => s + r.tusdQuoted, 0);
         const totalPotentialUsd = fwData.reduce((s, r) => s + r.positionValueUsd, 0);
+        // Use single-swap Quoter total (accurate price impact), fallback to sum of individuals
+        const totalPotentialTusd = apiData?.flywheelTotalTusdQuoted
+          ? apiData.flywheelTotalTusdQuoted
+          : fwData.reduce((s, r) => s + r.tusdQuoted, 0);
         const pctOfSupply = tusdSupplyNum > 0 ? (totalPotentialTusd / tusdSupplyNum) * 100 : 0;
+        const tusdPoolBal = apiData?.tusdPoolBalNum ?? 0;
+        const pctOfPool = tusdPoolBal > 0 ? Math.min((totalPotentialTusd / tusdPoolBal) * 100, 100) : 0;
 
         // Donut chart SVG params
         const donutR = 38, donutStroke = 10;
         const circ = 2 * Math.PI * donutR;
-        const filledLen = circ * Math.min(pctOfSupply, 100) / 100;
+        const filledSupply = circ * Math.min(pctOfSupply, 100) / 100;
+        const filledPool = circ * pctOfPool / 100;
 
         return (
           <div className="max-w-4xl w-full px-4 mb-8">
             <SectionTitle>Turbo Flywheel</SectionTitle>
 
-            {/* Summary hero with donut */}
+            {/* Summary hero with two donuts */}
             <div
               className="rounded-xl p-4 sm:p-6 mb-4 flex items-center justify-between"
               style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
             >
-              <div>
+              <div className="flex-1 min-w-0">
                 <p className="text-xs uppercase tracking-wider mb-1" style={{ color: TEXT_MUTED }}>
                   Potential buyback if all tokens reach 100M MC
                 </p>
@@ -2917,22 +2925,46 @@ const Home: NextPage = () => {
                   {fmtBigRound(totalPotentialTusd)} ₸USD
                 </p>
                 <p className="text-xs mt-1" style={{ color: TEXT_DIM }}>
-                  {fmtUsdShort(totalPotentialUsd)} · {pctOfSupply.toFixed(1)}% of supply
+                  {fmtUsdShort(totalPotentialUsd)}
                 </p>
               </div>
-              {/* Donut chart */}
-              <div className="flex-shrink-0 ml-4 relative" style={{ width: 96, height: 96 }}>
-                <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
-                  <circle cx="48" cy="48" r={donutR} fill="none" stroke="#1a1a1a" strokeWidth={donutStroke} />
-                  <circle
-                    cx="48" cy="48" r={donutR}
-                    fill="none" stroke={GOLD} strokeWidth={donutStroke}
-                    strokeDasharray={`${filledLen} ${circ - filledLen}`}
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-xs font-bold text-white">{pctOfSupply.toFixed(1)}%</span>
+              {/* Two donut charts */}
+              <div className="flex-shrink-0 ml-3 sm:ml-4 flex gap-2 sm:gap-5">
+                {/* Donut 1: % of total supply */}
+                <div className="flex flex-col items-center">
+                  <div className="relative w-[60px] h-[60px] sm:w-[80px] sm:h-[80px]">
+                    <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
+                      <circle cx="48" cy="48" r={donutR} fill="none" stroke="#2a2a2a" strokeWidth={donutStroke} />
+                      <circle
+                        cx="48" cy="48" r={donutR}
+                        fill="none" stroke={GOLD} strokeWidth={donutStroke}
+                        strokeDasharray={`${filledSupply} ${circ - filledSupply}`}
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-[9px] sm:text-xs font-bold text-white">{pctOfSupply.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                  <span className="text-[8px] sm:text-[10px] mt-1" style={{ color: TEXT_DIM }}>Total supply</span>
+                </div>
+                {/* Donut 2: % of Uniswap pool */}
+                <div className="flex flex-col items-center">
+                  <div className="relative w-[60px] h-[60px] sm:w-[80px] sm:h-[80px]">
+                    <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
+                      <circle cx="48" cy="48" r={donutR} fill="none" stroke="#2a2a2a" strokeWidth={donutStroke} />
+                      <circle
+                        cx="48" cy="48" r={donutR}
+                        fill="none" stroke={GOLD} strokeWidth={donutStroke}
+                        strokeDasharray={`${filledPool} ${circ - filledPool}`}
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-[9px] sm:text-xs font-bold text-white">{pctOfPool.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                  <span className="text-[8px] sm:text-[10px] mt-1" style={{ color: TEXT_DIM }}>Uniswap pool</span>
                 </div>
               </div>
             </div>
@@ -2945,11 +2977,11 @@ const Home: NextPage = () => {
                   className="rounded-xl p-3 sm:p-4"
                   style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
                 >
-                  {/* Row 1: ticker + current MC */}
+                  {/* Row 1: ticker + % to target */}
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold text-white">{row.ticker}</span>
                     <span className="text-xs" style={{ color: TEXT_MUTED }}>
-                      MC {fmtUsdShort(row.currentMC)}
+                      {row.progress.toFixed(1)}% to 100M
                     </span>
                   </div>
                   {/* Progress bar */}
@@ -2962,10 +2994,10 @@ const Home: NextPage = () => {
                       }}
                     />
                   </div>
-                  {/* Row 2: stats below bar */}
+                  {/* Row 2: MC + ₸USD at target */}
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-[10px] sm:text-xs" style={{ color: TEXT_DIM }}>
-                      {row.progress.toFixed(1)}% to 100M
+                      MC {fmtUsdShort(row.currentMC)}
                     </span>
                     <span className="text-[10px] sm:text-xs" style={{ color: TEXT_DIM }}>
                       → {fmtBigRound(row.tusdQuoted)} ₸USD

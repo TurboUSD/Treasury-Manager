@@ -289,6 +289,8 @@ export async function GET() {
       })),
       // 35: TUSD pool fee tier
       { address: TUSD_POOL as `0x${string}`, abi: [poolFeeAbi] as const, functionName: "fee" as const },
+      // 36: TUSD balance in Uniswap pool (available liquidity)
+      { address: TUSD as `0x${string}`, abi: [erc20BalanceOf] as const, functionName: "balanceOf" as const, args: [TUSD_POOL as `0x${string}`] },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ] as any;
     const results = await client.multicall({ contracts });
@@ -346,6 +348,10 @@ export async function GET() {
 
     // TUSD pool fee tier (index 35)
     const tusdPoolFee = (val(35) as number | null) ?? 10000;
+
+    // TUSD balance in Uniswap pool (index 36) — available liquidity for buyback
+    const tusdPoolBalRaw = val(36) as bigint | null;
+    const tusdPoolBalNum = tusdPoolBalRaw ? Number(formatEther(tusdPoolBalRaw)) : 0;
 
     // Computed values
     const tusdBalNum = tusdBal ? Number(formatEther(tusdBal)) : 0;
@@ -419,6 +425,32 @@ export async function GET() {
       );
     } catch (e) {
       console.error("[Flywheel] computation failed:", e);
+    }
+
+    // Single Quoter call for the TOTAL across all tokens (price impact is non-linear)
+    let flywheelTotalTusdQuoted = 0;
+    const flywheelTotalUsd = flywheelData.reduce((s, r) => s + r.positionValueUsd, 0);
+    const flywheelTotalWeth = wethPriceUsd > 0 ? flywheelTotalUsd / wethPriceUsd : 0;
+    if (flywheelTotalWeth > 0.001) {
+      try {
+        const wethWei = BigInt(Math.floor(flywheelTotalWeth * 1e18));
+        const result = await client.readContract({
+          address: QUOTER_V2 as `0x${string}`,
+          abi: quoterV2Abi,
+          functionName: "quoteExactInputSingle",
+          args: [{
+            tokenIn: WETH_ADDR as `0x${string}`,
+            tokenOut: TUSD as `0x${string}`,
+            amountIn: wethWei,
+            fee: tusdPoolFee,
+            sqrtPriceLimitX96: 0n,
+          }],
+        });
+        flywheelTotalTusdQuoted = Number(formatEther((result as readonly [bigint, ...unknown[]])[0]));
+      } catch (e) {
+        console.error("[Flywheel] Total Quoter failed:", e);
+        flywheelTotalTusdQuoted = flywheelData.reduce((s, r) => s + r.tusdQuoted, 0);
+      }
     }
 
     // 3. Incremental scanner — PASSIVE EVENTS ONLY
@@ -855,6 +887,8 @@ export async function GET() {
       totalManagedUsd,
       chartData: fullChart,
       flywheelData,
+      flywheelTotalTusdQuoted,
+      tusdPoolBalNum,
       currentBlock: Number(currentBlock),
     };
 
