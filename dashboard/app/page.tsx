@@ -3100,7 +3100,7 @@ const Home: NextPage = () => {
             >
               <div>
                 <p className="text-xs uppercase tracking-wider mb-1" style={{ color: TEXT_MUTED }}>
-                  Potential ₸USD buyback if all tokens reach 100M MC
+                  Potential buyback if all tokens reach 100M MC
                 </p>
                 <p className="text-2xl sm:text-3xl font-bold text-white">
                   {fmtBigRound(totalPotentialTusd)} ₸USD
