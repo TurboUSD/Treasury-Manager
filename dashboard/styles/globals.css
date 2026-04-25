@@ -144,9 +144,15 @@
 
 /* Force Address component inside contracts list to match label font */
 .hide-address-avatar a,
-.hide-address-avatar span {
+.hide-address-avatar span,
+.hide-address-text button {
   font-size: 0.875rem !important; /* text-sm = 14px */
   font-family: inherit !important;
+}
+/* Ensure copy icon inside ENS rows matches contract row icon size */
+.hide-address-text button svg {
+  width: 14px !important;
+  height: 14px !important;
 }
 
 /* Mobile: stat cards match managed funds card style */
