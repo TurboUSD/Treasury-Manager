@@ -746,6 +746,7 @@ const TEXT_DIM = "#888888";
 function StatCard({ title, value, subtitle, emoji, tooltip }: { title: React.ReactNode; value: string; subtitle?: React.ReactNode; emoji?: string; tooltip?: React.ReactNode }) {
   const [tipOpen, setTipOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  const isTouch = useRef(false);
 
   useEffect(() => {
     if (!tipOpen) return;
@@ -761,9 +762,10 @@ function StatCard({ title, value, subtitle, emoji, tooltip }: { title: React.Rea
       ref={cardRef}
       className="rounded-xl p-3 sm:p-5 stat-card-mobile relative"
       style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}`, cursor: tooltip ? "pointer" : undefined }}
+      onTouchStart={() => { isTouch.current = true; }}
       onClick={() => tooltip && setTipOpen(prev => !prev)}
-      onMouseEnter={() => tooltip && setTipOpen(true)}
-      onMouseLeave={() => tooltip && setTipOpen(false)}
+      onMouseEnter={() => { if (tooltip && !isTouch.current) setTipOpen(true); }}
+      onMouseLeave={() => { if (tooltip && !isTouch.current) setTipOpen(false); isTouch.current = false; }}
     >
       {emoji && (
         <span className="absolute bottom-2 right-2 sm:bottom-auto sm:top-1/2 sm:right-4 sm:-translate-y-1/2 text-2xl sm:text-4xl opacity-80 select-none">
@@ -784,15 +786,18 @@ function StatCard({ title, value, subtitle, emoji, tooltip }: { title: React.Rea
       )}
       {tooltip && tipOpen && (
         <div
-          className="absolute left-0 right-0 rounded-lg z-50"
+          className="absolute rounded-lg z-50"
           style={{
             bottom: "calc(100% + 6px)",
+            left: "50%",
+            transform: "translateX(-50%)",
             background: "#111",
             border: "1px solid #0f5a2a",
             borderRadius: 10,
             padding: "10px 14px",
             fontSize: 12,
             color: "#ccc",
+            whiteSpace: "nowrap",
             boxShadow: "0 8px 20px rgba(0,0,0,0.5)",
           }}
         >
@@ -2570,7 +2575,7 @@ const Home: NextPage = () => {
             }
           />
           <StatCard
-            title={`\u20B8USD In Contracts`}
+            title={<><span className="sm:hidden">In Contracts</span><span className="hidden sm:inline">₸USD In Contracts</span></>}
             value={totalLockedTusd > 0 ? fmtBig(totalLockedTusd) : "\u2014"}
             subtitle={
               totalLockedTusd > 0
