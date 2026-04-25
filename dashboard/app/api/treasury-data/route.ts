@@ -172,15 +172,27 @@ export async function GET() {
 
     // If cache is fresh, return it immediately (+ operations from DB)
     if (isFresh && cacheRow?.data && Object.keys(cacheRow.data).length > 0) {
-      const { data: ops } = await sb
-        .from("operations")
-        .select("*")
-        .order("date_utc", { ascending: false })
-        .limit(200);
+      const [{ data: ops }, { data: burnOps }, { data: buybackOps }] = await Promise.all([
+        sb.from("operations").select("*").order("date_utc", { ascending: false }).limit(200),
+        sb.from("operations").select("sell_amount").eq("op_type", "Burn"),
+        sb.from("operations").select("buy_amount, sell_currency").eq("op_type", "Buyback"),
+      ]);
+      const treasuryBurnedTotal = (burnOps || []).reduce((sum: number, op: any) => sum + (op.sell_amount || 0), 0);
+      let buybackWethTusd = 0;
+      let buybackUsdcTusd = 0;
+      for (const op of buybackOps || []) {
+        const amt = op.buy_amount || 0;
+        if ((op.sell_currency || "").toUpperCase() === "USDC") buybackUsdcTusd += amt;
+        else buybackWethTusd += amt;
+      }
 
       return NextResponse.json({
         ...cacheRow.data,
         operations: ops || [],
+        treasuryBurnedTotal,
+        buybackWethTusd,
+        buybackUsdcTusd,
+        totalBuybackTusd: buybackWethTusd + buybackUsdcTusd,
         cached: true,
         cacheAge: Math.round(cacheAge / 1000),
       });
@@ -775,9 +787,38 @@ export async function GET() {
       .order("date_utc", { ascending: false })
       .limit(200);
 
+    // 7. Aggregate totals from operations for tooltips
+    // Treasury burns (op_type = Burn, from TreasuryManager)
+    const { data: burnOps } = await sb
+      .from("operations")
+      .select("sell_amount")
+      .eq("op_type", "Burn");
+    const treasuryBurnedTotal = (burnOps || []).reduce((sum, op) => sum + (op.sell_amount || 0), 0);
+
+    // Buybacks split by currency (op_type = Buyback)
+    const { data: buybackOps } = await sb
+      .from("operations")
+      .select("buy_amount, sell_currency")
+      .eq("op_type", "Buyback");
+    let buybackWethTusd = 0;
+    let buybackUsdcTusd = 0;
+    for (const op of buybackOps || []) {
+      const amt = op.buy_amount || 0;
+      if ((op.sell_currency || "").toUpperCase() === "USDC") {
+        buybackUsdcTusd += amt;
+      } else {
+        buybackWethTusd += amt;
+      }
+    }
+    const totalBuybackTusd = buybackWethTusd + buybackUsdcTusd;
+
     return NextResponse.json({
       ...cacheData,
       operations: ops || [],
+      treasuryBurnedTotal,
+      buybackWethTusd,
+      buybackUsdcTusd,
+      totalBuybackTusd,
       cached: false,
       newOpsInserted: 0, // Operations written exclusively by AMI 9000
     });

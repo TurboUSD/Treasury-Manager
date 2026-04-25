@@ -691,6 +691,14 @@ function fmtBig(n: number): string {
   return Math.round(n).toString();
 }
 
+/** Like fmtBig but without decimals: 956M, 22M, 25B */
+function fmtBigRound(n: number): string {
+  if (n >= 1_000_000_000) return `${Math.round(n / 1_000_000_000)}B`;
+  if (n >= 1_000_000) return `${Math.round(n / 1_000_000)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+  return Math.round(n).toString();
+}
+
 /** Full number with thousand separators: 3838664 → "3,838,664", 0.0018 → "0.0018" */
 function fmtFull(n: number): string {
   if (n === 0) return "0";
@@ -735,11 +743,27 @@ const TEXT_DIM = "#888888";
 
 // ── Components ────────────────────────────────────────────────────────────
 
-function StatCard({ title, value, subtitle, emoji }: { title: React.ReactNode; value: string; subtitle?: React.ReactNode; emoji?: string }) {
+function StatCard({ title, value, subtitle, emoji, tooltip }: { title: React.ReactNode; value: string; subtitle?: React.ReactNode; emoji?: string; tooltip?: React.ReactNode }) {
+  const [tipOpen, setTipOpen] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!tipOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (cardRef.current && !cardRef.current.contains(e.target as Node)) setTipOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [tipOpen]);
+
   return (
     <div
+      ref={cardRef}
       className="rounded-xl p-3 sm:p-5 stat-card-mobile relative"
-      style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
+      style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}`, cursor: tooltip ? "pointer" : undefined }}
+      onClick={() => tooltip && setTipOpen(prev => !prev)}
+      onMouseEnter={() => tooltip && setTipOpen(true)}
+      onMouseLeave={() => tooltip && setTipOpen(false)}
     >
       {emoji && (
         <span className="absolute bottom-2 right-2 sm:bottom-auto sm:top-1/2 sm:right-4 sm:-translate-y-1/2 text-2xl sm:text-4xl opacity-80 select-none">
@@ -756,6 +780,23 @@ function StatCard({ title, value, subtitle, emoji }: { title: React.ReactNode; v
       {subtitle && (
         <div className="text-[10px] sm:text-sm mt-2" style={{ color: TEXT_DIM }}>
           {subtitle}
+        </div>
+      )}
+      {tooltip && tipOpen && (
+        <div
+          className="absolute left-0 right-0 rounded-lg z-50"
+          style={{
+            bottom: "calc(100% + 6px)",
+            background: "#111",
+            border: "1px solid #0f5a2a",
+            borderRadius: 10,
+            padding: "10px 14px",
+            fontSize: 12,
+            color: "#ccc",
+            boxShadow: "0 8px 20px rgba(0,0,0,0.5)",
+          }}
+        >
+          {tooltip}
         </div>
       )}
     </div>
@@ -1945,6 +1986,10 @@ const Home: NextPage = () => {
     stratBalances: Record<string, number>;
     strategicTotalUsd: number;
     totalManagedUsd: number;
+    treasuryBurnedTotal: number;
+    buybackWethTusd: number;
+    buybackUsdcTusd: number;
+    totalBuybackTusd: number;
     chartData: {
       date: string;
       dateRaw?: string;
@@ -2045,7 +2090,12 @@ const Home: NextPage = () => {
   const burnPct = tusdSupplyNum > 0 ? (tusdBurnedNum / tusdSupplyNum) * 100 : 0;
   const burnUsd = tusdBurnedNum * tusdPriceUsd;
 
-  const totalBuybackTusd = 22_024_060;
+  const treasuryBurnedTotal = apiData?.treasuryBurnedTotal ?? 0;
+  const externalBurned = Math.max(0, tusdBurnedNum - engineBurned - treasuryBurnedTotal);
+
+  const totalBuybackTusd = apiData?.totalBuybackTusd ?? 0;
+  const buybackWethTusd = apiData?.buybackWethTusd ?? 0;
+  const buybackUsdcTusd = apiData?.buybackUsdcTusd ?? 0;
   const buybackPct = tusdSupplyNum > 0 ? (totalBuybackTusd / tusdSupplyNum) * 100 : 0;
   const buybackUsd = totalBuybackTusd * tusdPriceUsd;
 
@@ -2480,9 +2530,9 @@ const Home: NextPage = () => {
           <p className="text-xs uppercase tracking-widest mb-2" style={{ color: GOLD }}>
             Managed Funds
           </p>
-          <p className="text-5xl font-bold text-white mt-2">{fmtUsd(totalManagedUsd)}</p>
+          <p className="text-5xl font-bold text-white mt-2">{fmtUsd(totalManagedUsd + burnUsd)}</p>
           <p className="text-xs mt-3" style={{ color: TEXT_DIM }}>
-            Value of all tokens held in the treasury
+            {fmtUsdShort(totalManagedUsd)} excluding burns
           </p>
         </div>
       </div>
@@ -2495,22 +2545,41 @@ const Home: NextPage = () => {
             value={fmtBig(tusdBurnedNum)}
             subtitle={<>{fmtUsdShort(burnUsd)}<br />{fmtPct(burnPct)}</>}
             emoji="🔥"
+            tooltip={
+              <div style={{ lineHeight: 1.7 }}>
+                <div><span style={{ color: "#fff", fontWeight: 600 }}>BurnEngine:</span> {fmtBigRound(engineBurned)} ₸USD</div>
+                <div><span style={{ color: "#fff", fontWeight: 600 }}>Treasury:</span> {fmtBigRound(treasuryBurnedTotal)} ₸USD</div>
+                <div><span style={{ color: "#fff", fontWeight: 600 }}>External:</span> {fmtBigRound(externalBurned)} ₸USD</div>
+              </div>
+            }
           />
           <StatCard
             title={`\u20B8USD Bought`}
             value={fmtBig(totalBuybackTusd)}
             subtitle={<>{fmtUsdShort(buybackUsd)}<br />{fmtPct(buybackPct)}</>}
             emoji="🛒"
+            tooltip={
+              <div style={{ lineHeight: 1.7 }}>
+                <div><span style={{ color: "#fff", fontWeight: 600 }}>WETH Buyback:</span> {fmtBigRound(buybackWethTusd)} ₸USD</div>
+                <div><span style={{ color: "#fff", fontWeight: 600 }}>USDC Buyback:</span> {fmtBigRound(buybackUsdcTusd)} ₸USD</div>
+              </div>
+            }
           />
           <StatCard
-            title={`\u20B8USD Locked`}
+            title={`\u20B8USD In Contracts`}
             value={totalLockedTusd > 0 ? fmtBig(totalLockedTusd) : "\u2014"}
             subtitle={
               totalLockedTusd > 0
                 ? <>{fmtUsdShort(totalLockedTusd * tusdPriceUsd)}<br />{fmtPct((totalLockedTusd / tusdSupplyNum) * 100)}</>
                 : "No locked tokens"
             }
-            emoji="🔒"
+            emoji="🔓"
+            tooltip={
+              <div style={{ lineHeight: 1.7 }}>
+                <div><span style={{ color: "#fff", fontWeight: 600 }}>Staking:</span> {fmtBigRound(tusdStakedNum)} ₸USD</div>
+                <div><span style={{ color: "#fff", fontWeight: 600 }}>Treasury:</span> {fmtBigRound(tusdBalNum)} ₸USD</div>
+              </div>
+            }
           />
         </div>
       </div>
