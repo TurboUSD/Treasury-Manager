@@ -3069,6 +3069,90 @@ const Home: NextPage = () => {
         </div>
       </div>
 
+      {/* Turbo Flywheel — strategic token progress toward 100M MC */}
+      {hasStrategicTokens && (
+        <div className="max-w-4xl w-full px-4 mb-8">
+          <SectionTitle>Turbo Flywheel</SectionTitle>
+          {(() => {
+            const TARGET_MC = 100_000_000;
+            const flywheelRows = strategicRows.map(row => {
+              const buyPrice = row.computedBuyPrice;
+              const entryMC = Number(row.preset.buyMarketCapUsd) || 0;
+              // Derive total supply from entry market cap / buy price
+              const totalSupply = buyPrice > 0 ? entryMC / buyPrice : 0;
+              const currentMC = totalSupply > 0 ? totalSupply * row.currentPrice : 0;
+              const progress = currentMC > 0 ? Math.min((currentMC / TARGET_MC) * 100, 100) : 0;
+              // Position value if token reaches 100M MC
+              const priceAt100M = totalSupply > 0 ? TARGET_MC / totalSupply : 0;
+              const positionValueAt100M = row.balance * priceAt100M;
+              const tusdEquiv = tusdPriceUsd > 0 ? positionValueAt100M / tusdPriceUsd : 0;
+              return { ...row, currentMC, progress, positionValueAt100M, tusdEquiv, totalSupply };
+            });
+            const totalPotentialUsd = flywheelRows.reduce((s, r) => s + r.positionValueAt100M, 0);
+            const totalPotentialTusd = tusdPriceUsd > 0 ? totalPotentialUsd / tusdPriceUsd : 0;
+            const pctOfSupply = tusdSupplyNum > 0 ? (totalPotentialTusd / tusdSupplyNum) * 100 : 0;
+
+            return (
+              <>
+                {/* Summary hero */}
+                <div
+                  className="rounded-xl p-4 sm:p-6 mb-4"
+                  style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
+                >
+                  <p className="text-xs uppercase tracking-wider mb-1" style={{ color: TEXT_MUTED }}>
+                    Potential ₸USD buyback if all tokens reach 100M MC
+                  </p>
+                  <p className="text-2xl sm:text-3xl font-bold text-white">
+                    {fmtBigRound(totalPotentialTusd)} ₸USD
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: TEXT_DIM }}>
+                    {fmtUsdShort(totalPotentialUsd)} · {pctOfSupply.toFixed(1)}% of supply
+                  </p>
+                </div>
+
+                {/* Progress bars */}
+                <div className="flex flex-col gap-3">
+                  {flywheelRows.map(row => (
+                    <div
+                      key={row.preset.ticker}
+                      className="rounded-xl p-3 sm:p-4"
+                      style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
+                    >
+                      {/* Row 1: ticker + current MC */}
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold text-white">{row.preset.ticker}</span>
+                        <span className="text-xs" style={{ color: TEXT_MUTED }}>
+                          MC {fmtUsdShort(row.currentMC)}
+                        </span>
+                      </div>
+                      {/* Progress bar */}
+                      <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: "#1a1a1a" }}>
+                        <div
+                          className="h-full rounded-full transition-all duration-700"
+                          style={{
+                            width: `${Math.max(row.progress, 0.5)}%`,
+                            background: GOLD,
+                          }}
+                        />
+                      </div>
+                      {/* Row 2: stats below bar */}
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="text-[10px] sm:text-xs" style={{ color: TEXT_DIM }}>
+                          {row.progress.toFixed(1)}% to 100M
+                        </span>
+                        <span className="text-[10px] sm:text-xs" style={{ color: TEXT_DIM }}>
+                          → {fmtBigRound(row.tusdEquiv)} ₸USD at target
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      )}
+
       {/* BurnEngine */}
       <div className="max-w-4xl w-full px-4 mb-8">
         <SectionTitle>Burn Engine</SectionTitle>
