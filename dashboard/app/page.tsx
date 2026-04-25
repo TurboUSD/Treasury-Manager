@@ -2262,9 +2262,12 @@ const Home: NextPage = () => {
     [key: `strat_${string}`]: number;
   };
 
+  // Add BurnEngine + Treasury burns to ₸USD in chart (matching Managed Funds logic)
+  const burnUsdForChart = (engineBurned + treasuryBurnedTotal) * tusdPriceUsd;
   const chartData: DailySnapshot[] = useMemo(() => {
-    return (apiData?.chartData as DailySnapshot[] | undefined) ?? [];
-  }, [apiData?.chartData]);
+    const raw = (apiData?.chartData as DailySnapshot[] | undefined) ?? [];
+    return raw.map(d => ({ ...d, tusd: d.tusd + burnUsdForChart }));
+  }, [apiData?.chartData, burnUsdForChart]);
 
   // ── Chart controls ───────────────────────────────────────────────────────
   const [chartView, setChartView] = useState<"all" | "strategic">("all");
