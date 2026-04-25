@@ -3434,7 +3434,7 @@ const Home: NextPage = () => {
 
       {/* Contracts */}
       <div className="max-w-4xl w-full px-4 mb-8">
-        <SectionTitle>Contracts</SectionTitle>
+        <SectionTitle>Contracts and Wallets</SectionTitle>
         <div className="rounded-xl p-6 space-y-3" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
           {(
             [
@@ -3468,7 +3468,7 @@ const Home: NextPage = () => {
                     >
                       {baseName}
                     </a>
-                    <span className="hide-address-avatar hide-address-text">
+                    <span className="hide-address-avatar hide-address-text text-sm" style={{ fontFamily: "inherit" }}>
                       <Address address={addr} />
                     </span>
                   </span>
