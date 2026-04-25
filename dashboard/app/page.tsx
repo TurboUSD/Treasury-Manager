@@ -2874,7 +2874,22 @@ const Home: NextPage = () => {
 
       {/* Turbo Flywheel — strategic token progress toward 100M MC */}
       {hasStrategicTokens && (() => {
-        const fwData = apiData?.flywheelData ?? [];
+        // Use API flywheel data (Quoter-simulated) when available, otherwise compute fallback
+        const TARGET_MC_FW = 100_000_000;
+        const apiFw = apiData?.flywheelData;
+        const fwData: { ticker: string; currentMC: number; progress: number; positionValueUsd: number; tusdQuoted: number }[] =
+          apiFw && apiFw.length > 0
+            ? apiFw
+            : strategicRows.map(row => {
+                const buyPrice = row.computedBuyPrice;
+                const entryMC = Number(row.preset.buyMarketCapUsd) || 0;
+                const totalSupply = buyPrice > 0 ? entryMC / buyPrice : 0;
+                const currentMC = totalSupply > 0 ? totalSupply * row.currentPrice : 0;
+                const progress = currentMC > 0 ? Math.min((currentMC / TARGET_MC_FW) * 100, 100) : 0;
+                const positionValueUsd = totalSupply > 0 ? row.balance * (TARGET_MC_FW / totalSupply) : 0;
+                const tusdQuoted = tusdPriceUsd > 0 ? positionValueUsd / tusdPriceUsd : 0;
+                return { ticker: row.preset.ticker, currentMC, progress, positionValueUsd, tusdQuoted };
+              });
         if (fwData.length === 0) return null;
         const totalPotentialTusd = fwData.reduce((s, r) => s + r.tusdQuoted, 0);
         const totalPotentialUsd = fwData.reduce((s, r) => s + r.positionValueUsd, 0);
