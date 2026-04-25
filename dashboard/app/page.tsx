@@ -2919,7 +2919,7 @@ const Home: NextPage = () => {
             >
               <div className="flex-1 min-w-0">
                 <p className="text-xs uppercase tracking-wider mb-1" style={{ color: TEXT_MUTED }}>
-                  Potential buyback if all tokens reach 100M MC
+                  Potential buyback if all tokens reach $100M
                 </p>
                 <p className="text-2xl sm:text-3xl font-bold text-white">
                   {fmtBigRound(totalPotentialTusd)} ₸USD
@@ -2997,7 +2997,7 @@ const Home: NextPage = () => {
                   {/* Row 2: MC + ₸USD at target */}
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-[10px] sm:text-xs" style={{ color: TEXT_DIM }}>
-                      MC {fmtUsdShort(row.currentMC)}
+                      ${fmtBigRound(row.currentMC)} mkt cap
                     </span>
                     <span className="text-[10px] sm:text-xs" style={{ color: TEXT_DIM }}>
                       → {fmtBigRound(row.tusdQuoted)} ₸USD
