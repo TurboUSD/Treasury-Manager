@@ -2951,7 +2951,7 @@ const Home: NextPage = () => {
                   <div className="flex flex-col items-center">
                     <div className="relative w-[140px] h-[140px]">
                       <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
-                        <circle cx="48" cy="48" r={donutR} fill="none" stroke="#383838" strokeWidth={donutStroke} />
+                        <circle cx="48" cy="48" r={donutR} fill="none" stroke="rgb(63,63,63)" strokeWidth={donutStroke} />
                         <circle cx="48" cy="48" r={donutR} fill="none" stroke={GOLD} strokeWidth={donutStroke} strokeDasharray={`${filledSupply} ${circ - filledSupply}`} strokeLinecap="round" />
                       </svg>
                       <div className="absolute inset-0 flex items-center justify-center">
@@ -2964,7 +2964,7 @@ const Home: NextPage = () => {
                   <div className="flex flex-col items-center">
                     <div className="relative w-[140px] h-[140px]">
                       <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
-                        <circle cx="48" cy="48" r={donutR} fill="none" stroke="#383838" strokeWidth={donutStroke} />
+                        <circle cx="48" cy="48" r={donutR} fill="none" stroke="rgb(63,63,63)" strokeWidth={donutStroke} />
                         <circle cx="48" cy="48" r={donutR} fill="none" stroke={GOLD} strokeWidth={donutStroke} strokeDasharray={`${filledPool} ${circ - filledPool}`} strokeLinecap="round" />
                       </svg>
                       <div className="absolute inset-0 flex items-center justify-center">
@@ -2999,7 +2999,7 @@ const Home: NextPage = () => {
                   <div className="flex flex-col items-center">
                     <div className="relative w-[100px] h-[100px]">
                       <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
-                        <circle cx="48" cy="48" r={donutR} fill="none" stroke="#383838" strokeWidth={donutStroke} />
+                        <circle cx="48" cy="48" r={donutR} fill="none" stroke="rgb(63,63,63)" strokeWidth={donutStroke} />
                         <circle cx="48" cy="48" r={donutR} fill="none" stroke={GOLD} strokeWidth={donutStroke} strokeDasharray={`${filledSupply} ${circ - filledSupply}`} strokeLinecap="round" />
                       </svg>
                       <div className="absolute inset-0 flex items-center justify-center">
@@ -3011,7 +3011,7 @@ const Home: NextPage = () => {
                   <div className="flex flex-col items-center">
                     <div className="relative w-[100px] h-[100px]">
                       <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
-                        <circle cx="48" cy="48" r={donutR} fill="none" stroke="#383838" strokeWidth={donutStroke} />
+                        <circle cx="48" cy="48" r={donutR} fill="none" stroke="rgb(63,63,63)" strokeWidth={donutStroke} />
                         <circle cx="48" cy="48" r={donutR} fill="none" stroke={GOLD} strokeWidth={donutStroke} strokeDasharray={`${filledPool} ${circ - filledPool}`} strokeLinecap="round" />
                       </svg>
                       <div className="absolute inset-0 flex items-center justify-center">
@@ -3040,7 +3040,7 @@ const Home: NextPage = () => {
                     </span>
                   </div>
                   {/* Progress bar */}
-                  <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: "#252525" }}>
+                  <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: "rgb(63,63,63)" }}>
                     <div
                       className="h-full rounded-full transition-all duration-700"
                       style={{ width: `${Math.max(row.progress, 0.5)}%`, background: GOLD }}
