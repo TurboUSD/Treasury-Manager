@@ -736,7 +736,7 @@ const STALE_MED = 30 * 60 * 1000; // 30min — balances (change only on transact
 
 // ── Design tokens ─────────────────────────────────────────────────────────
 const GOLD = "#43e397";
-const CARD_BG = "#0c0c0c";
+const CARD_BG = "#141414";
 const CARD_BORDER = "#0f5a2a";
 const TEXT_MUTED = "#a8a8a8";
 const TEXT_DIM = "#888888";
@@ -2927,83 +2927,98 @@ const Home: NextPage = () => {
                 Potential buyback if all tokens reach $100M
               </p>
 
-              {/* Desktop: text left + donuts right */}
-              {/* Mobile: 10B left + usd/% right, donuts below */}
-              <div className="flex items-center justify-between sm:items-start">
+              {/* Desktop: text left + donuts right, centered */}
+              <div className="hidden sm:flex items-center justify-center gap-12">
                 {/* Left: value block */}
-                <div className="flex items-center sm:block gap-3">
-                  <p className="text-2xl sm:text-3xl font-bold text-white leading-tight whitespace-nowrap">
+                <div>
+                  <p className="text-3xl font-bold text-white leading-tight">
                     {fmtBigRound(totalPotentialTusd)} ₸USD
                   </p>
-                  {/* Mobile: usd + price stacked to the right of 10B */}
-                  <div className="flex flex-col justify-center sm:block" style={{ lineHeight: 1.2 }}>
-                    <p className="text-sm sm:text-base" style={{ color: TEXT_DIM }}>
-                      {fmtUsdShort(totalPotentialUsd)}
+                  <p className="text-base" style={{ color: TEXT_DIM, lineHeight: 1.3 }}>
+                    {fmtUsdShort(totalPotentialUsd)} buyback
+                  </p>
+                  {totalPriceImpact > 0 && (
+                    <p className="text-base font-semibold" style={{ color: GOLD, lineHeight: 1.3 }}>
+                      +{Math.round(totalPriceImpact)}% on price
+                    </p>
+                  )}
+                </div>
+
+                {/* Desktop donuts — 140px, spaced */}
+                <div className="flex items-center gap-12 flex-shrink-0 ml-6">
+                  {/* Donut 1: % of total supply */}
+                  <div className="flex flex-col items-center">
+                    <div className="relative w-[140px] h-[140px]">
+                      <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
+                        <circle cx="48" cy="48" r={donutR} fill="none" stroke="#383838" strokeWidth={donutStroke} />
+                        <circle cx="48" cy="48" r={donutR} fill="none" stroke={GOLD} strokeWidth={donutStroke} strokeDasharray={`${filledSupply} ${circ - filledSupply}`} strokeLinecap="round" />
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-sm font-bold text-white">{pctOfSupply.toFixed(1)}%</span>
+                      </div>
+                    </div>
+                    <span className="text-xs mt-1" style={{ color: TEXT_DIM }}>Total supply</span>
+                  </div>
+                  {/* Donut 2: % of Uniswap pool */}
+                  <div className="flex flex-col items-center">
+                    <div className="relative w-[140px] h-[140px]">
+                      <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
+                        <circle cx="48" cy="48" r={donutR} fill="none" stroke="#383838" strokeWidth={donutStroke} />
+                        <circle cx="48" cy="48" r={donutR} fill="none" stroke={GOLD} strokeWidth={donutStroke} strokeDasharray={`${filledPool} ${circ - filledPool}`} strokeLinecap="round" />
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-sm font-bold text-white">{pctOfPool.toFixed(1)}%</span>
+                      </div>
+                    </div>
+                    <span className="text-xs mt-1" style={{ color: TEXT_DIM }}>Uniswap pool</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Mobile: centered text block + donuts below */}
+              <div className="sm:hidden">
+                {/* Value row: 10B left, usd+% right vertically centered */}
+                <div className="flex items-center gap-2">
+                  <p className="font-bold text-white leading-none whitespace-nowrap" style={{ fontSize: "30px" }}>
+                    {fmtBigRound(totalPotentialTusd)} ₸USD
+                  </p>
+                  <div className="flex flex-col justify-center" style={{ lineHeight: 1.15 }}>
+                    <p className="text-sm" style={{ color: TEXT_DIM }}>
+                      {fmtUsdShort(totalPotentialUsd)} buyback
                     </p>
                     {totalPriceImpact > 0 && (
-                      <p className="text-sm sm:text-base font-semibold" style={{ color: GOLD }}>
+                      <p className="text-sm font-semibold" style={{ color: GOLD }}>
                         +{Math.round(totalPriceImpact)}% on price
                       </p>
                     )}
                   </div>
                 </div>
-
-                {/* Desktop only: donuts on the right */}
-                <div className="hidden sm:flex items-center gap-8 flex-shrink-0 ml-6">
-                  {/* Donut 1: % of total supply */}
+                {/* Donuts centered */}
+                <div className="flex justify-center gap-6 mt-4">
                   <div className="flex flex-col items-center">
                     <div className="relative w-[100px] h-[100px]">
                       <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
-                        <circle cx="48" cy="48" r={donutR} fill="none" stroke="#2a2a2a" strokeWidth={donutStroke} />
+                        <circle cx="48" cy="48" r={donutR} fill="none" stroke="#383838" strokeWidth={donutStroke} />
                         <circle cx="48" cy="48" r={donutR} fill="none" stroke={GOLD} strokeWidth={donutStroke} strokeDasharray={`${filledSupply} ${circ - filledSupply}`} strokeLinecap="round" />
                       </svg>
                       <div className="absolute inset-0 flex items-center justify-center">
                         <span className="text-xs font-bold text-white">{pctOfSupply.toFixed(1)}%</span>
                       </div>
                     </div>
-                    <span className="text-[11px] mt-1" style={{ color: TEXT_DIM }}>Total supply</span>
+                    <span className="text-[10px] mt-1" style={{ color: TEXT_DIM }}>Total supply</span>
                   </div>
-                  {/* Donut 2: % of Uniswap pool */}
                   <div className="flex flex-col items-center">
                     <div className="relative w-[100px] h-[100px]">
                       <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
-                        <circle cx="48" cy="48" r={donutR} fill="none" stroke="#2a2a2a" strokeWidth={donutStroke} />
+                        <circle cx="48" cy="48" r={donutR} fill="none" stroke="#383838" strokeWidth={donutStroke} />
                         <circle cx="48" cy="48" r={donutR} fill="none" stroke={GOLD} strokeWidth={donutStroke} strokeDasharray={`${filledPool} ${circ - filledPool}`} strokeLinecap="round" />
                       </svg>
                       <div className="absolute inset-0 flex items-center justify-center">
                         <span className="text-xs font-bold text-white">{pctOfPool.toFixed(1)}%</span>
                       </div>
                     </div>
-                    <span className="text-[11px] mt-1" style={{ color: TEXT_DIM }}>Uniswap pool</span>
+                    <span className="text-[10px] mt-1" style={{ color: TEXT_DIM }}>Uniswap pool</span>
                   </div>
-                </div>
-              </div>
-
-              {/* Mobile only: donuts centered below */}
-              <div className="flex sm:hidden justify-center gap-6 mt-4">
-                <div className="flex flex-col items-center">
-                  <div className="relative w-[70px] h-[70px]">
-                    <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
-                      <circle cx="48" cy="48" r={donutR} fill="none" stroke="#2a2a2a" strokeWidth={donutStroke} />
-                      <circle cx="48" cy="48" r={donutR} fill="none" stroke={GOLD} strokeWidth={donutStroke} strokeDasharray={`${filledSupply} ${circ - filledSupply}`} strokeLinecap="round" />
-                    </svg>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-[10px] font-bold text-white">{pctOfSupply.toFixed(1)}%</span>
-                    </div>
-                  </div>
-                  <span className="text-[9px] mt-1" style={{ color: TEXT_DIM }}>Total supply</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <div className="relative w-[70px] h-[70px]">
-                    <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
-                      <circle cx="48" cy="48" r={donutR} fill="none" stroke="#2a2a2a" strokeWidth={donutStroke} />
-                      <circle cx="48" cy="48" r={donutR} fill="none" stroke={GOLD} strokeWidth={donutStroke} strokeDasharray={`${filledPool} ${circ - filledPool}`} strokeLinecap="round" />
-                    </svg>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-[10px] font-bold text-white">{pctOfPool.toFixed(1)}%</span>
-                    </div>
-                  </div>
-                  <span className="text-[9px] mt-1" style={{ color: TEXT_DIM }}>Uniswap pool</span>
                 </div>
               </div>
             </div>
@@ -3024,7 +3039,7 @@ const Home: NextPage = () => {
                     </span>
                   </div>
                   {/* Progress bar */}
-                  <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: "#1a1a1a" }}>
+                  <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: "#252525" }}>
                     <div
                       className="h-full rounded-full transition-all duration-700"
                       style={{ width: `${Math.max(row.progress, 0.5)}%`, background: GOLD }}
