@@ -2020,9 +2020,13 @@ const Home: NextPage = () => {
       progress: number;
       positionValueUsd: number;
       tusdQuoted: number;
+      priceImpactPct: number;
+      balance: number;
     }[];
     flywheelTotalTusdQuoted: number;
+    flywheelTotalPriceImpactPct: number;
     tusdPoolBalNum: number;
+    wethPoolBalNum: number;
     chartData: {
       date: string;
       dateRaw?: string;
@@ -2879,7 +2883,7 @@ const Home: NextPage = () => {
         // Use API flywheel data (Quoter-simulated) when available, otherwise compute fallback
         const TARGET_MC_FW = 100_000_000;
         const apiFw = apiData?.flywheelData;
-        const fwData: { ticker: string; currentMC: number; progress: number; positionValueUsd: number; tusdQuoted: number }[] =
+        const fwData: { ticker: string; balance: number; currentMC: number; progress: number; positionValueUsd: number; tusdQuoted: number; priceImpactPct: number }[] =
           apiFw && apiFw.length > 0
             ? apiFw
             : strategicRows.map(row => {
@@ -2890,7 +2894,7 @@ const Home: NextPage = () => {
                 const progress = currentMC > 0 ? Math.min((currentMC / TARGET_MC_FW) * 100, 100) : 0;
                 const positionValueUsd = totalSupply > 0 ? row.balance * (TARGET_MC_FW / totalSupply) : 0;
                 const tusdQuoted = tusdPriceUsd > 0 ? positionValueUsd / tusdPriceUsd : 0;
-                return { ticker: row.preset.ticker, currentMC, progress, positionValueUsd, tusdQuoted };
+                return { ticker: row.preset.ticker, balance: row.balance, currentMC, progress, positionValueUsd, tusdQuoted, priceImpactPct: 0 };
               });
         if (fwData.length === 0) return null;
         const totalPotentialUsd = fwData.reduce((s, r) => s + r.positionValueUsd, 0);
@@ -2901,6 +2905,7 @@ const Home: NextPage = () => {
         const pctOfSupply = tusdSupplyNum > 0 ? (totalPotentialTusd / tusdSupplyNum) * 100 : 0;
         const tusdPoolBal = apiData?.tusdPoolBalNum ?? 0;
         const pctOfPool = tusdPoolBal > 0 ? Math.min((totalPotentialTusd / tusdPoolBal) * 100, 100) : 0;
+        const totalPriceImpact = apiData?.flywheelTotalPriceImpactPct ?? 0;
 
         // Donut chart SVG params
         const donutR = 38, donutStroke = 10;
@@ -2912,64 +2917,62 @@ const Home: NextPage = () => {
           <div className="max-w-4xl w-full px-4 mb-8">
             <SectionTitle>Turbo Flywheel</SectionTitle>
 
-            {/* Summary hero with two donuts */}
+            {/* Summary hero: text left/right top, donuts bottom */}
             <div
-              className="rounded-xl p-4 sm:p-6 mb-4 flex items-center justify-between"
+              className="rounded-xl p-4 sm:p-6 mb-4"
               style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
             >
-              <div className="flex-1 min-w-0">
-                <p className="text-xs uppercase tracking-wider mb-1" style={{ color: TEXT_MUTED }}>
+              {/* Top row: subtitle left, value right */}
+              <div className="flex items-start justify-between">
+                <p className="text-[10px] sm:text-xs uppercase tracking-wider" style={{ color: TEXT_MUTED }}>
                   Potential buyback if all tokens reach $100M
                 </p>
-                <p className="text-2xl sm:text-3xl font-bold text-white">
-                  {fmtBigRound(totalPotentialTusd)} ₸USD
-                </p>
-                <p className="text-xs mt-1" style={{ color: TEXT_DIM }}>
-                  {fmtUsdShort(totalPotentialUsd)}
-                </p>
+                <div className="flex-shrink-0 ml-3 text-right">
+                  <p className="text-xl sm:text-3xl font-bold text-white leading-tight">
+                    {fmtBigRound(totalPotentialTusd)} ₸USD
+                  </p>
+                  <p className="text-[10px] sm:text-xs" style={{ color: TEXT_DIM }}>
+                    {fmtUsdShort(totalPotentialUsd)}
+                  </p>
+                  {totalPriceImpact > 0 && (
+                    <p className="text-[10px] sm:text-xs font-semibold" style={{ color: GOLD }}>
+                      +{Math.round(totalPriceImpact)}% on price
+                    </p>
+                  )}
+                </div>
               </div>
-              {/* Two donut charts */}
-              <div className="flex-shrink-0 ml-3 sm:ml-4 flex gap-2 sm:gap-5">
+              {/* Bottom row: two donuts centered */}
+              <div className="flex justify-center gap-6 sm:gap-10 mt-4">
                 {/* Donut 1: % of total supply */}
                 <div className="flex flex-col items-center">
-                  <div className="relative w-[60px] h-[60px] sm:w-[80px] sm:h-[80px]">
+                  <div className="relative w-[70px] h-[70px] sm:w-[88px] sm:h-[88px]">
                     <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
                       <circle cx="48" cy="48" r={donutR} fill="none" stroke="#2a2a2a" strokeWidth={donutStroke} />
-                      <circle
-                        cx="48" cy="48" r={donutR}
-                        fill="none" stroke={GOLD} strokeWidth={donutStroke}
-                        strokeDasharray={`${filledSupply} ${circ - filledSupply}`}
-                        strokeLinecap="round"
-                      />
+                      <circle cx="48" cy="48" r={donutR} fill="none" stroke={GOLD} strokeWidth={donutStroke} strokeDasharray={`${filledSupply} ${circ - filledSupply}`} strokeLinecap="round" />
                     </svg>
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-[9px] sm:text-xs font-bold text-white">{pctOfSupply.toFixed(1)}%</span>
+                      <span className="text-[10px] sm:text-xs font-bold text-white">{pctOfSupply.toFixed(1)}%</span>
                     </div>
                   </div>
-                  <span className="text-[8px] sm:text-[10px] mt-1" style={{ color: TEXT_DIM }}>Total supply</span>
+                  <span className="text-[9px] sm:text-[11px] mt-1" style={{ color: TEXT_DIM }}>Total supply</span>
                 </div>
                 {/* Donut 2: % of Uniswap pool */}
                 <div className="flex flex-col items-center">
-                  <div className="relative w-[60px] h-[60px] sm:w-[80px] sm:h-[80px]">
+                  <div className="relative w-[70px] h-[70px] sm:w-[88px] sm:h-[88px]">
                     <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
                       <circle cx="48" cy="48" r={donutR} fill="none" stroke="#2a2a2a" strokeWidth={donutStroke} />
-                      <circle
-                        cx="48" cy="48" r={donutR}
-                        fill="none" stroke={GOLD} strokeWidth={donutStroke}
-                        strokeDasharray={`${filledPool} ${circ - filledPool}`}
-                        strokeLinecap="round"
-                      />
+                      <circle cx="48" cy="48" r={donutR} fill="none" stroke={GOLD} strokeWidth={donutStroke} strokeDasharray={`${filledPool} ${circ - filledPool}`} strokeLinecap="round" />
                     </svg>
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-[9px] sm:text-xs font-bold text-white">{pctOfPool.toFixed(1)}%</span>
+                      <span className="text-[10px] sm:text-xs font-bold text-white">{pctOfPool.toFixed(1)}%</span>
                     </div>
                   </div>
-                  <span className="text-[8px] sm:text-[10px] mt-1" style={{ color: TEXT_DIM }}>Uniswap pool</span>
+                  <span className="text-[9px] sm:text-[11px] mt-1" style={{ color: TEXT_DIM }}>Uniswap pool</span>
                 </div>
               </div>
             </div>
 
-            {/* Progress bars — 2 columns on desktop */}
+            {/* Progress bars — 2 columns */}
             <div className="grid grid-cols-2 gap-3">
               {fwData.map(row => (
                 <div
@@ -2981,26 +2984,23 @@ const Home: NextPage = () => {
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold text-white">{row.ticker}</span>
                     <span className="text-xs" style={{ color: TEXT_MUTED }}>
-                      {row.progress.toFixed(1)}% to 100M
+                      {row.progress.toFixed(1)}% to $100M
                     </span>
                   </div>
                   {/* Progress bar */}
                   <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: "#1a1a1a" }}>
                     <div
                       className="h-full rounded-full transition-all duration-700"
-                      style={{
-                        width: `${Math.max(row.progress, 0.5)}%`,
-                        background: GOLD,
-                      }}
+                      style={{ width: `${Math.max(row.progress, 0.5)}%`, background: GOLD }}
                     />
                   </div>
-                  {/* Row 2: MC + ₸USD at target */}
+                  {/* Row 2: balance (desktop only) + tusd → price impact */}
                   <div className="flex items-center justify-between mt-2">
-                    <span className="text-[10px] sm:text-xs" style={{ color: TEXT_DIM }}>
-                      ${fmtBigRound(row.currentMC)} mkt cap
+                    <span className="hidden sm:inline text-xs" style={{ color: TEXT_DIM }}>
+                      {fmtBigRound(row.balance)}
                     </span>
                     <span className="text-[10px] sm:text-xs" style={{ color: TEXT_DIM }}>
-                      → {fmtBigRound(row.tusdQuoted)} ₸USD
+                      {fmtBigRound(row.tusdQuoted)} ₸USD{row.priceImpactPct > 0 ? ` → +${Math.round(row.priceImpactPct)}%` : ""}
                     </span>
                   </div>
                 </div>

@@ -291,6 +291,8 @@ export async function GET() {
       { address: TUSD_POOL as `0x${string}`, abi: [poolFeeAbi] as const, functionName: "fee" as const },
       // 36: TUSD balance in Uniswap pool (available liquidity)
       { address: TUSD as `0x${string}`, abi: [erc20BalanceOf] as const, functionName: "balanceOf" as const, args: [TUSD_POOL as `0x${string}`] },
+      // 37: WETH balance in Uniswap pool (for price impact calc)
+      { address: WETH_ADDR as `0x${string}`, abi: [erc20BalanceOf] as const, functionName: "balanceOf" as const, args: [TUSD_POOL as `0x${string}`] },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ] as any;
     const results = await client.multicall({ contracts });
@@ -353,6 +355,10 @@ export async function GET() {
     const tusdPoolBalRaw = val(36) as bigint | null;
     const tusdPoolBalNum = tusdPoolBalRaw ? Number(formatEther(tusdPoolBalRaw)) : 0;
 
+    // WETH balance in Uniswap pool (index 37) — for price impact calculation
+    const wethPoolBalRaw = val(37) as bigint | null;
+    const wethPoolBalNum = wethPoolBalRaw ? Number(formatEther(wethPoolBalRaw)) : 0;
+
     // Computed values
     const tusdBalNum = tusdBal ? Number(formatEther(tusdBal)) : 0;
     const wethBalNum = wethBal ? Number(formatEther(wethBal)) : 0;
@@ -388,7 +394,7 @@ export async function GET() {
     // ── Flywheel: Quoter-simulated WETH→₸USD swaps at 100M MC ──────────
     const FLYWHEEL_TARGET_MC = 100_000_000;
     const flywheelTokens = strategicRows.filter(r => stratTotalSupply[r.ticker] > 0);
-    let flywheelData: { ticker: string; currentMC: number; progress: number; positionValueUsd: number; tusdQuoted: number }[] = [];
+    let flywheelData: { ticker: string; balance: number; currentMC: number; progress: number; positionValueUsd: number; tusdQuoted: number; priceImpactPct: number }[] = [];
     try {
       flywheelData = await Promise.all(
         flywheelTokens.map(async r => {
@@ -420,7 +426,16 @@ export async function GET() {
               tusdQuoted = tusdPriceUsd > 0 ? positionValueUsd / tusdPriceUsd : 0;
             }
           }
-          return { ticker: r.ticker, currentMC, progress, positionValueUsd, tusdQuoted };
+
+          // Price impact: constant-product approximation using pool reserves
+          let priceImpactPct = 0;
+          if (tusdPoolBalNum > 0 && wethPoolBalNum > 0 && tusdQuoted > 0 && wethNeeded > 0) {
+            const oldPrice = wethPoolBalNum / tusdPoolBalNum;
+            const newPrice = (wethPoolBalNum + wethNeeded) / (tusdPoolBalNum - tusdQuoted);
+            priceImpactPct = ((newPrice / oldPrice) - 1) * 100;
+          }
+
+          return { ticker: r.ticker, balance: r.balance, currentMC, progress, positionValueUsd, tusdQuoted, priceImpactPct };
         }),
       );
     } catch (e) {
@@ -451,6 +466,14 @@ export async function GET() {
         console.error("[Flywheel] Total Quoter failed:", e);
         flywheelTotalTusdQuoted = flywheelData.reduce((s, r) => s + r.tusdQuoted, 0);
       }
+    }
+
+    // Total price impact for the combined buyback
+    let flywheelTotalPriceImpactPct = 0;
+    if (tusdPoolBalNum > 0 && wethPoolBalNum > 0 && flywheelTotalTusdQuoted > 0 && flywheelTotalWeth > 0) {
+      const oldPrice = wethPoolBalNum / tusdPoolBalNum;
+      const newPrice = (wethPoolBalNum + flywheelTotalWeth) / (tusdPoolBalNum - flywheelTotalTusdQuoted);
+      flywheelTotalPriceImpactPct = ((newPrice / oldPrice) - 1) * 100;
     }
 
     // 3. Incremental scanner — PASSIVE EVENTS ONLY
@@ -888,7 +911,9 @@ export async function GET() {
       chartData: fullChart,
       flywheelData,
       flywheelTotalTusdQuoted,
+      flywheelTotalPriceImpactPct,
       tusdPoolBalNum,
+      wethPoolBalNum,
       currentBlock: Number(currentBlock),
     };
 
