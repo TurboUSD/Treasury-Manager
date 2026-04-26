@@ -2917,57 +2917,93 @@ const Home: NextPage = () => {
           <div className="max-w-4xl w-full px-4 mb-8">
             <SectionTitle>Turbo Flywheel</SectionTitle>
 
-            {/* Summary hero: text left/right top, donuts bottom */}
+            {/* Summary hero card */}
             <div
               className="rounded-xl p-4 sm:p-6 mb-4"
               style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
             >
-              {/* Top row: subtitle left, value right */}
-              <div className="flex items-start justify-between">
-                <p className="text-[10px] sm:text-xs uppercase tracking-wider" style={{ color: TEXT_MUTED }}>
-                  Potential buyback if all tokens reach $100M
-                </p>
-                <div className="flex-shrink-0 ml-3 text-right">
-                  <p className="text-xl sm:text-3xl font-bold text-white leading-tight">
+              {/* Subtitle — single line, full width on mobile */}
+              <p className="text-[9px] sm:text-xs uppercase tracking-wider mb-3 whitespace-nowrap overflow-hidden text-ellipsis" style={{ color: TEXT_MUTED }}>
+                Potential buyback if all tokens reach $100M
+              </p>
+
+              {/* Desktop: text left + donuts right */}
+              {/* Mobile: 10B left + usd/% right, donuts below */}
+              <div className="flex items-center justify-between sm:items-start">
+                {/* Left: value block */}
+                <div className="flex items-center sm:block gap-3">
+                  <p className="text-2xl sm:text-3xl font-bold text-white leading-tight whitespace-nowrap">
                     {fmtBigRound(totalPotentialTusd)} ₸USD
                   </p>
-                  <p className="text-[10px] sm:text-xs" style={{ color: TEXT_DIM }}>
-                    {fmtUsdShort(totalPotentialUsd)}
-                  </p>
-                  {totalPriceImpact > 0 && (
-                    <p className="text-[10px] sm:text-xs font-semibold" style={{ color: GOLD }}>
-                      +{Math.round(totalPriceImpact)}% on price
+                  {/* Mobile: usd + price stacked to the right of 10B */}
+                  <div className="flex flex-col justify-center sm:block" style={{ lineHeight: 1.2 }}>
+                    <p className="text-sm sm:text-base" style={{ color: TEXT_DIM }}>
+                      {fmtUsdShort(totalPotentialUsd)}
                     </p>
-                  )}
+                    {totalPriceImpact > 0 && (
+                      <p className="text-sm sm:text-base font-semibold" style={{ color: GOLD }}>
+                        +{Math.round(totalPriceImpact)}% on price
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Desktop only: donuts on the right */}
+                <div className="hidden sm:flex items-center gap-8 flex-shrink-0 ml-6">
+                  {/* Donut 1: % of total supply */}
+                  <div className="flex flex-col items-center">
+                    <div className="relative w-[100px] h-[100px]">
+                      <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
+                        <circle cx="48" cy="48" r={donutR} fill="none" stroke="#2a2a2a" strokeWidth={donutStroke} />
+                        <circle cx="48" cy="48" r={donutR} fill="none" stroke={GOLD} strokeWidth={donutStroke} strokeDasharray={`${filledSupply} ${circ - filledSupply}`} strokeLinecap="round" />
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-xs font-bold text-white">{pctOfSupply.toFixed(1)}%</span>
+                      </div>
+                    </div>
+                    <span className="text-[11px] mt-1" style={{ color: TEXT_DIM }}>Total supply</span>
+                  </div>
+                  {/* Donut 2: % of Uniswap pool */}
+                  <div className="flex flex-col items-center">
+                    <div className="relative w-[100px] h-[100px]">
+                      <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
+                        <circle cx="48" cy="48" r={donutR} fill="none" stroke="#2a2a2a" strokeWidth={donutStroke} />
+                        <circle cx="48" cy="48" r={donutR} fill="none" stroke={GOLD} strokeWidth={donutStroke} strokeDasharray={`${filledPool} ${circ - filledPool}`} strokeLinecap="round" />
+                      </svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-xs font-bold text-white">{pctOfPool.toFixed(1)}%</span>
+                      </div>
+                    </div>
+                    <span className="text-[11px] mt-1" style={{ color: TEXT_DIM }}>Uniswap pool</span>
+                  </div>
                 </div>
               </div>
-              {/* Bottom row: two donuts centered */}
-              <div className="flex justify-center gap-6 sm:gap-10 mt-4">
-                {/* Donut 1: % of total supply */}
+
+              {/* Mobile only: donuts centered below */}
+              <div className="flex sm:hidden justify-center gap-6 mt-4">
                 <div className="flex flex-col items-center">
-                  <div className="relative w-[70px] h-[70px] sm:w-[88px] sm:h-[88px]">
+                  <div className="relative w-[70px] h-[70px]">
                     <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
                       <circle cx="48" cy="48" r={donutR} fill="none" stroke="#2a2a2a" strokeWidth={donutStroke} />
                       <circle cx="48" cy="48" r={donutR} fill="none" stroke={GOLD} strokeWidth={donutStroke} strokeDasharray={`${filledSupply} ${circ - filledSupply}`} strokeLinecap="round" />
                     </svg>
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-[10px] sm:text-xs font-bold text-white">{pctOfSupply.toFixed(1)}%</span>
+                      <span className="text-[10px] font-bold text-white">{pctOfSupply.toFixed(1)}%</span>
                     </div>
                   </div>
-                  <span className="text-[9px] sm:text-[11px] mt-1" style={{ color: TEXT_DIM }}>Total supply</span>
+                  <span className="text-[9px] mt-1" style={{ color: TEXT_DIM }}>Total supply</span>
                 </div>
-                {/* Donut 2: % of Uniswap pool */}
                 <div className="flex flex-col items-center">
-                  <div className="relative w-[70px] h-[70px] sm:w-[88px] sm:h-[88px]">
+                  <div className="relative w-[70px] h-[70px]">
                     <svg viewBox="0 0 96 96" className="w-full h-full" style={{ transform: "rotate(-90deg)" }}>
                       <circle cx="48" cy="48" r={donutR} fill="none" stroke="#2a2a2a" strokeWidth={donutStroke} />
                       <circle cx="48" cy="48" r={donutR} fill="none" stroke={GOLD} strokeWidth={donutStroke} strokeDasharray={`${filledPool} ${circ - filledPool}`} strokeLinecap="round" />
                     </svg>
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-[10px] sm:text-xs font-bold text-white">{pctOfPool.toFixed(1)}%</span>
+                      <span className="text-[10px] font-bold text-white">{pctOfPool.toFixed(1)}%</span>
                     </div>
                   </div>
-                  <span className="text-[9px] sm:text-[11px] mt-1" style={{ color: TEXT_DIM }}>Uniswap pool</span>
+                  <span className="text-[9px] mt-1" style={{ color: TEXT_DIM }}>Uniswap pool</span>
                 </div>
               </div>
             </div>
@@ -2994,11 +3030,8 @@ const Home: NextPage = () => {
                       style={{ width: `${Math.max(row.progress, 0.5)}%`, background: GOLD }}
                     />
                   </div>
-                  {/* Row 2: balance (desktop only) + tusd → price impact */}
-                  <div className="flex items-center justify-between mt-2">
-                    <span className="hidden sm:inline text-xs" style={{ color: TEXT_DIM }}>
-                      {fmtBigRound(row.balance)}
-                    </span>
+                  {/* Row 2: tusd → price impact */}
+                  <div className="flex items-center justify-end mt-2">
                     <span className="text-[10px] sm:text-xs" style={{ color: TEXT_DIM }}>
                       {fmtBigRound(row.tusdQuoted)} ₸USD{row.priceImpactPct > 0 ? ` → +${Math.round(row.priceImpactPct)}%` : ""}
                     </span>
