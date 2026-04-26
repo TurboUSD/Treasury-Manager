@@ -2924,7 +2924,7 @@ const Home: NextPage = () => {
               style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
             >
               {/* Subtitle — single line, full width on mobile */}
-              <p className="text-[9px] sm:text-xs uppercase tracking-wider mb-3 whitespace-nowrap overflow-hidden text-ellipsis" style={{ color: TEXT_MUTED }}>
+              <p className="text-[10px] sm:text-xs uppercase tracking-wider mb-3 whitespace-nowrap overflow-hidden text-ellipsis" style={{ color: TEXT_MUTED }}>
                 Potential buyback if all tokens reach $100M
               </p>
 
@@ -2935,7 +2935,7 @@ const Home: NextPage = () => {
                   <p className="text-3xl font-bold text-white leading-tight">
                     {fmtBigRound(totalPotentialTusd)} ₸USD
                   </p>
-                  <p className="text-base" style={{ color: TEXT_DIM, lineHeight: 1.3 }}>
+                  <p className="text-base" style={{ color: "#fff", lineHeight: 1.3 }}>
                     {fmtUsdShort(totalPotentialUsd)} buyback
                   </p>
                   {totalPriceImpact > 0 && (
@@ -2984,7 +2984,7 @@ const Home: NextPage = () => {
                     {fmtBigRound(totalPotentialTusd)} ₸USD
                   </p>
                   <div className="flex flex-col justify-center flex-shrink-0" style={{ lineHeight: 1.15, gap: 0 }}>
-                    <p className="text-sm whitespace-nowrap" style={{ color: TEXT_DIM, margin: 0, padding: 0 }}>
+                    <p className="text-sm whitespace-nowrap" style={{ color: "#fff", margin: 0, padding: 0 }}>
                       {fmtUsdShort(totalPotentialUsd)} buyback
                     </p>
                     {totalPriceImpact > 0 && (
