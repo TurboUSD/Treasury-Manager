@@ -2902,7 +2902,8 @@ const Home: NextPage = () => {
         const totalPotentialTusd = apiData?.flywheelTotalTusdQuoted
           ? apiData.flywheelTotalTusdQuoted
           : fwData.reduce((s, r) => s + r.tusdQuoted, 0);
-        const pctOfSupply = tusdSupplyNum > 0 ? (totalPotentialTusd / tusdSupplyNum) * 100 : 0;
+        const circulatingSupply = tusdSupplyNum - tusdBurnedNum;
+        const pctOfSupply = circulatingSupply > 0 ? (totalPotentialTusd / circulatingSupply) * 100 : 0;
         const tusdPoolBal = apiData?.tusdPoolBalNum ?? 0;
         const pctOfPool = tusdPoolBal > 0 ? Math.min((totalPotentialTusd / tusdPoolBal) * 100, 100) : 0;
         const totalPriceImpact = apiData?.flywheelTotalPriceImpactPct ?? 0;
@@ -2976,18 +2977,18 @@ const Home: NextPage = () => {
               </div>
 
               {/* Mobile: centered text block + donuts below */}
-              <div className="sm:hidden">
+              <div className="sm:hidden flex flex-col items-center">
                 {/* Value row: 10B left, usd+% right vertically centered */}
-                <div className="flex items-center gap-2">
-                  <p className="font-bold text-white leading-none whitespace-nowrap" style={{ fontSize: "30px" }}>
+                <div className="inline-flex items-center gap-4">
+                  <p className="font-bold text-white leading-none whitespace-nowrap flex-shrink-0" style={{ fontSize: "30px", margin: 0 }}>
                     {fmtBigRound(totalPotentialTusd)} ₸USD
                   </p>
-                  <div className="flex flex-col justify-center" style={{ lineHeight: 1.15 }}>
-                    <p className="text-sm" style={{ color: TEXT_DIM }}>
+                  <div className="flex flex-col justify-center flex-shrink-0" style={{ lineHeight: 1.15, gap: 0 }}>
+                    <p className="text-sm whitespace-nowrap" style={{ color: TEXT_DIM, margin: 0, padding: 0 }}>
                       {fmtUsdShort(totalPotentialUsd)} buyback
                     </p>
                     {totalPriceImpact > 0 && (
-                      <p className="text-sm font-semibold" style={{ color: GOLD }}>
+                      <p className="text-sm font-semibold whitespace-nowrap" style={{ color: GOLD, margin: 0, padding: 0 }}>
                         +{Math.round(totalPriceImpact)}% on price
                       </p>
                     )}
