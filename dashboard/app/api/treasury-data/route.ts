@@ -401,7 +401,9 @@ export async function GET() {
           const totalSup = stratTotalSupply[r.ticker];
           const currentMC = totalSup * r.currentPrice;
           const progress = currentMC > 0 ? Math.min((currentMC / FLYWHEEL_TARGET_MC) * 100, 100) : 0;
-          const positionValueUsd = totalSup > 0 ? r.balance * (FLYWHEEL_TARGET_MC / totalSup) : 0;
+          const positionValueUsdFull = totalSup > 0 ? r.balance * (FLYWHEEL_TARGET_MC / totalSup) : 0;
+          // Only 75% goes to buyback (25% USDC to owner)
+          const positionValueUsd = positionValueUsdFull * 0.75;
           const wethNeeded = wethPriceUsd > 0 ? positionValueUsd / wethPriceUsd : 0;
 
           let tusdQuoted = 0;
