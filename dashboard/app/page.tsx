@@ -3048,7 +3048,7 @@ const Home: NextPage = () => {
                   </div>
                   {/* Row 2: tusd → price impact */}
                   <div className="flex items-center justify-end mt-2">
-                    <span className="text-[10px] sm:text-xs" style={{ color: TEXT_DIM }}>
+                    <span className="text-[10px] sm:text-xs" style={{ color: TEXT_MUTED }}>
                       {fmtBigRound(row.tusdQuoted)} ₸USD{row.priceImpactPct > 0 ? ` → +${Math.round(row.priceImpactPct)}%` : ""}
                     </span>
                   </div>
