@@ -3263,7 +3263,7 @@ const Home: NextPage = () => {
                 <XAxis
                   dataKey="date"
                   tick={{ fontSize: 11, fill: "#a6a6a6" }}
-                  stroke="#1c1c1c"
+                  stroke="#333"
                   tickFormatter={(v: string) => {
                     if (v === "Today") return "Today";
                     const parts = v.split("-");
@@ -3274,7 +3274,7 @@ const Home: NextPage = () => {
                 <YAxis
                   tickFormatter={(v: number) => fmtUsd(v)}
                   tick={{ fontSize: 11, fill: "#a6a6a6" }}
-                  stroke="#1c1c1c"
+                  stroke="#333"
                   width={80}
                 />
                 <Tooltip
@@ -3428,12 +3428,12 @@ const Home: NextPage = () => {
               <XAxis
                 dataKey="year"
                 tick={{ fontSize: 11, fill: "#a6a6a6" }}
-                stroke="#1c1c1c"
+                stroke="#333"
                 interval={1}
               />
               <YAxis
                 tick={{ fontSize: 11, fill: "#a6a6a6" }}
-                stroke="#1c1c1c"
+                stroke="#333"
                 width={45}
                 domain={[92, "auto"]}
                 tickFormatter={(v: number) => v.toFixed(0)}
@@ -3461,16 +3461,6 @@ const Home: NextPage = () => {
                     </div>
                   );
                 }}
-              />
-              {/* Reference line at 100 */}
-              <Line
-                type="monotone"
-                dataKey={() => 100}
-                stroke="#333"
-                strokeWidth={1}
-                strokeDasharray="4 4"
-                dot={false}
-                isAnimationActive={false}
               />
               {visibleDeflAssets.flatMap(({ key, color }) => [
                 <Line
