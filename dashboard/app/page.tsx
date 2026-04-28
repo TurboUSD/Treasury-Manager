@@ -3377,38 +3377,48 @@ const Home: NextPage = () => {
                 );
               })}
             </div>
-            {/* Asset filter dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setDeflFilterOpen(prev => !prev)}
-                className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-colors"
-                style={{ background: "transparent", color: "#fff" }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+            {/* Right side: Asset filter + Projection legend */}
+            <div className="flex items-center gap-4 flex-shrink-0">
+              {/* Projection legend */}
+              <div className="flex items-center gap-1.5">
+                <svg width="24" height="2" viewBox="0 0 24 2">
+                  <line x1="0" y1="1" x2="24" y2="1" stroke="#fff" strokeWidth="2" strokeDasharray="5 3" />
                 </svg>
-                Asset
-              </button>
-              {deflFilterOpen && (
-                <div className="absolute right-0 sm:right-0 mt-1 rounded-lg overflow-hidden z-10" style={{ background: "#1c1c1c", border: "1px solid #333", minWidth: 160, right: 0 }}>
-                  {(["all", "inflationary", "fixed", "deflationary"] as const).map(f => (
-                    <button
-                      key={f}
-                      onClick={() => { setDeflFilter(f); setDeflFilterOpen(false); }}
-                      className="block w-full text-left px-3 py-2 text-xs font-medium transition-colors"
-                      style={{
-                        background: deflFilter === f ? "#ffffff10" : "transparent",
-                        color: deflFilter === f ? "#fff" : TEXT_MUTED,
-                      }}
-                    >
-                      {deflFilterLabels[f]}
-                      <span className="ml-1" style={{ color: TEXT_DIM, fontSize: 10 }}>
-                        {f === "inflationary" ? "Gold, USD" : f === "fixed" ? "BTC" : f === "deflationary" ? "₸USD" : ""}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
+                <span className="text-[10px]" style={{ color: TEXT_DIM }}>Projection</span>
+              </div>
+              {/* Asset filter dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setDeflFilterOpen(prev => !prev)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-colors"
+                  style={{ background: "transparent", color: "#fff" }}
+                >
+                  Asset
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                  </svg>
+                </button>
+                {deflFilterOpen && (
+                  <div className="absolute mt-1 rounded-lg overflow-hidden z-10" style={{ background: "#1c1c1c", border: "1px solid #333", minWidth: 160, right: "auto", left: "50%", transform: "translateX(-70%)" }}>
+                    {(["all", "inflationary", "fixed", "deflationary"] as const).map(f => (
+                      <button
+                        key={f}
+                        onClick={() => { setDeflFilter(f); setDeflFilterOpen(false); }}
+                        className="block w-full text-left px-3 py-2 text-xs font-medium transition-colors"
+                        style={{
+                          background: deflFilter === f ? "#ffffff10" : "transparent",
+                          color: deflFilter === f ? "#fff" : TEXT_MUTED,
+                        }}
+                      >
+                        {deflFilterLabels[f]}
+                        <span className="ml-1" style={{ color: TEXT_DIM, fontSize: 10 }}>
+                          {f === "inflationary" ? "Gold, USD" : f === "fixed" ? "BTC" : f === "deflationary" ? "₸USD" : ""}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -3495,7 +3505,7 @@ const Home: NextPage = () => {
               return (
                 <div key={key} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full" style={{ border: `1px solid ${color}30`, background: `${color}10` }}>
                   <span className="w-2 h-2 rounded-full" style={{ background: color }} />
-                  <span style={{ color: TEXT_MUTED }}>{label.split(" ")[0]}</span>
+                  <span style={{ color: TEXT_MUTED }}>{key === "usd" ? "US Dollar" : key === "gold" ? "Gold" : key === "btc" ? "Bitcoin" : "TurboUSD"}</span>
                   <span className="font-semibold" style={{ color }}>
                     {rate >= 0 ? "+" : ""}{rate}%/yr
                   </span>
@@ -3504,16 +3514,7 @@ const Home: NextPage = () => {
             })}
           </div>
 
-          {/* Legend: prediction line + description */}
-          <div className="flex flex-wrap items-center justify-center gap-4 mt-3">
-            <div className="flex items-center gap-2">
-              <svg width="30" height="2" viewBox="0 0 30 2">
-                <line x1="0" y1="1" x2="30" y2="1" stroke="#fff" strokeWidth="2" strokeDasharray="6 4" />
-              </svg>
-              <span className="text-[10px]" style={{ color: TEXT_DIM }}>Projection</span>
-            </div>
-          </div>
-          <p className="text-center text-[10px] mt-2" style={{ color: TEXT_DIM }}>
+          <p className="text-center text-[10px] mt-3" style={{ color: TEXT_DIM }}>
             Normalized supply index (base 100). Shows how each asset&apos;s total supply changes over time relative to its starting point.
           </p>
         </div>
