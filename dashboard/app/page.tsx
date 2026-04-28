@@ -3379,8 +3379,8 @@ const Home: NextPage = () => {
               );
             })}
           </div>
-          {/* Row 2: Asset filter left, Projection right */}
-          <div className="flex items-center justify-between mb-4 mt-1">
+          {/* Row 2: Supply model filter left, Projection right */}
+          <div className="flex items-center justify-between mb-4 mt-1 sm:mt-3">
             {/* Asset filter — matches ops filter style */}
             <div ref={deflFilterRef} className="inline-flex items-center gap-1">
               <span className="text-[10px] sm:text-xs uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Supply model</span>
@@ -3423,30 +3423,40 @@ const Home: NextPage = () => {
                     </button>
                     {/* Category toggles */}
                     {(["inflationary", "fixed", "deflationary"] as const).map(cat => {
-                      const active = deflCats.has(cat);
+                      // When allOn, nothing is individually highlighted — clicking means "select only this"
+                      // When not allOn, active categories are highlighted — clicking toggles them
+                      const checked = !allOn && deflCats.has(cat);
                       return (
                         <button
                           key={cat}
                           onClick={() => {
-                            setDeflCats(prev => {
-                              const next = new Set(prev);
-                              if (active) {
-                                // Don't allow deselecting the last one
-                                if (next.size <= 1) return prev;
-                                next.delete(cat);
-                              } else {
-                                next.add(cat);
-                              }
-                              // Sync deflHidden from the new cat set
-                              const toHide = new Set(deflAssets.filter(a => !next.has(a.category)).map(a => a.key));
+                            if (allOn) {
+                              // From "All": select only this category
+                              const next = new Set([cat]);
+                              setDeflCats(next);
+                              const toHide = new Set(deflAssets.filter(a => a.category !== cat).map(a => a.key));
                               setDeflHidden(toHide);
-                              return next;
-                            });
+                            } else {
+                              setDeflCats(prev => {
+                                const next = new Set(prev);
+                                if (next.has(cat)) {
+                                  // Don't allow deselecting the last one
+                                  if (next.size <= 1) return prev;
+                                  next.delete(cat);
+                                } else {
+                                  next.add(cat);
+                                }
+                                // Sync deflHidden from the new cat set
+                                const toHide = new Set(deflAssets.filter(a => !next.has(a.category)).map(a => a.key));
+                                setDeflHidden(toHide);
+                                return next;
+                              });
+                            }
                           }}
                           className="w-full text-left py-1 text-xs hover:bg-[#333] flex items-center gap-2 rounded px-1"
-                          style={{ color: active && !allOn ? "#fff" : active && allOn ? "#888" : "#888" }}
+                          style={{ color: checked ? "#fff" : "#888" }}
                         >
-                          <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: active && !allOn ? GOLD : "transparent" }} />
+                          <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: checked ? GOLD : "transparent" }} />
                           {deflFilterLabels[cat]}
                         </button>
                       );
