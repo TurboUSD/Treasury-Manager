@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { Address } from "@scaffold-ui/components";
 import type { NextPage } from "next";
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { parseEther, parseUnits } from "viem";
 import { base } from "viem/chains";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
@@ -2282,6 +2282,85 @@ const Home: NextPage = () => {
     return raw.map(d => ({ ...d, tusd: d.tusd + burnUsdForChart }));
   }, [apiData?.chartData, burnUsdForChart]);
 
+  // ── Deflation Edge chart ──────────────────────────────────────────────────
+  const [deflHidden, setDeflHidden] = useState<Set<string>>(new Set());
+  const [deflFilter, setDeflFilter] = useState<"all" | "inflationary" | "fixed" | "deflationary">("all");
+  const [deflFilterOpen, setDeflFilterOpen] = useState(false);
+
+  const deflAssets = useMemo(() => [
+    { key: "usd", label: "US Dollar (M2)", color: "#888888", category: "inflationary" as const },
+    { key: "gold", label: "Gold", color: "#d4a017", category: "inflationary" as const },
+    { key: "btc", label: "Bitcoin", color: "#f7931a", category: "fixed" as const },
+    { key: "tusd", label: "TurboUSD", color: GOLD, category: "deflationary" as const },
+  ], []);
+
+  const deflData = useMemo(() => {
+    // Annual supply growth rates (%)
+    // USD M2: historical avg ~7%, recent years vary
+    const usdRates: Record<number, number> = {
+      2016: 7.2, 2017: 5.3, 2018: 3.9, 2019: 6.7, 2020: 25.2,
+      2021: 12.8, 2022: -1.3, 2023: -3.5, 2024: 3.5, 2025: 4.5,
+      // Projected
+      2026: 5.0, 2027: 5.0, 2028: 4.5, 2029: 4.5, 2030: 4.5,
+    };
+    // Gold: ~1-1.7%
+    const goldRates: Record<number, number> = {
+      2016: 1.4, 2017: 1.3, 2018: 1.5, 2019: 1.4, 2020: 1.2,
+      2021: 1.6, 2022: 1.3, 2023: 1.5, 2024: 1.0, 2025: 1.0,
+      2026: 1.2, 2027: 1.1, 2028: 1.0, 2029: 1.0, 2030: 0.9,
+    };
+    // BTC: halving-dependent
+    const btcRates: Record<number, number> = {
+      2016: 8.2, 2017: 4.2, 2018: 3.9, 2019: 3.7, 2020: 2.5,
+      2021: 1.8, 2022: 1.7, 2023: 1.7, 2024: 0.85, 2025: 0.83,
+      2026: 0.8, 2027: 0.8, 2028: 0.4, 2029: 0.4, 2030: 0.4,
+    };
+    // TurboUSD: launched mid-2025, -1.28% annual burn
+    const tusdRates: Record<number, number> = {
+      2025: -0.64, // half year
+      2026: -1.28, 2027: -1.3, 2028: -1.3, 2029: -1.3, 2030: -1.3,
+    };
+
+    const years = Array.from({ length: 15 }, (_, i) => 2016 + i);
+    let usdIdx = 100, goldIdx = 100, btcIdx = 100, tusdIdx = 100;
+    const PROJ = 2026; // first projected year
+    return years.map(y => {
+      if (y > 2016) {
+        usdIdx *= 1 + (usdRates[y] ?? 5) / 100;
+        goldIdx *= 1 + (goldRates[y] ?? 1.2) / 100;
+        btcIdx *= 1 + (btcRates[y] ?? 0.5) / 100;
+        if (y >= 2025) tusdIdx *= 1 + (tusdRates[y] ?? -1.3) / 100;
+      }
+      const uV = Math.round(usdIdx * 100) / 100;
+      const gV = Math.round(goldIdx * 100) / 100;
+      const bV = Math.round(btcIdx * 100) / 100;
+      const tV = y >= 2025 ? Math.round(tusdIdx * 100) / 100 : null;
+      const isProj = y >= PROJ;
+      const isBridge = y === PROJ - 1;
+      return {
+        year: y.toString(),
+        projected: isProj,
+        ...((!isProj || isBridge) ? { usd: uV, gold: gV, btc: bV, ...(tV != null ? { tusd: tV } : {}) } : {}),
+        ...((isProj || isBridge) ? { usd_p: uV, gold_p: gV, btc_p: bV, ...(tV != null ? { tusd_p: tV } : {}) } : {}),
+      };
+    });
+  }, []);
+
+  const deflFilterLabels: Record<string, string> = {
+    all: "All",
+    inflationary: "Inflationary",
+    fixed: "Fixed Supply",
+    deflationary: "Deflationary",
+  };
+
+  const visibleDeflAssets = useMemo(() => {
+    return deflAssets.filter(a => {
+      if (deflHidden.has(a.key)) return false;
+      if (deflFilter === "all") return true;
+      return a.category === deflFilter;
+    });
+  }, [deflAssets, deflHidden, deflFilter]);
+
   // ── Chart controls ───────────────────────────────────────────────────────
   const [chartView, setChartView] = useState<"all" | "strategic">("all");
   const [chartRange, setChartRange] = useState<"7d" | "30d" | "90d" | "max">("max");
@@ -3058,6 +3137,167 @@ const Home: NextPage = () => {
           </div>
         );
       })()}
+
+      {/* The Deflation Edge — supply growth comparison chart */}
+      <div className="max-w-4xl w-full px-4 mb-8">
+        <SectionTitle>The Deflation Edge</SectionTitle>
+        <div className="rounded-xl p-4 sm:p-6" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
+          {/* Top controls: legend left, asset filter right */}
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+            {/* Clickable legend */}
+            <div className="flex flex-wrap gap-3 text-xs">
+              {deflAssets.map(({ key, label, color }) => {
+                const hidden = deflHidden.has(key) || (deflFilter !== "all" && deflAssets.find(a => a.key === key)?.category !== deflFilter);
+                return (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      setDeflHidden(prev => {
+                        const next = new Set(prev);
+                        next.has(key) ? next.delete(key) : next.add(key);
+                        return next;
+                      });
+                    }}
+                    className="flex items-center gap-1.5 transition-opacity"
+                    style={{ opacity: hidden ? 0.35 : 1 }}
+                  >
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: hidden ? "#555" : color }} />
+                    <span style={{ color: hidden ? TEXT_DIM : TEXT_MUTED, textDecoration: hidden ? "line-through" : "none" }}>
+                      {label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {/* Asset filter dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setDeflFilterOpen(prev => !prev)}
+                className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-colors"
+                style={{ background: "transparent", color: "#fff" }}
+              >
+                Asset
+                <svg width="10" height="10" viewBox="0 0 20 20" fill="currentColor"
+                  style={{ transform: deflFilterOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.15s" }}>
+                  <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                </svg>
+              </button>
+              {deflFilterOpen && (
+                <div className="absolute right-0 mt-1 rounded-lg overflow-hidden z-10" style={{ background: "#1c1c1c", border: "1px solid #333", minWidth: 140 }}>
+                  {(["all", "inflationary", "fixed", "deflationary"] as const).map(f => (
+                    <button
+                      key={f}
+                      onClick={() => { setDeflFilter(f); setDeflFilterOpen(false); }}
+                      className="block w-full text-left px-3 py-1.5 text-xs font-medium transition-colors"
+                      style={{
+                        background: deflFilter === f ? "#ffffff10" : "transparent",
+                        color: deflFilter === f ? "#fff" : TEXT_MUTED,
+                      }}
+                    >
+                      {deflFilterLabels[f]}
+                      <span className="ml-1" style={{ color: TEXT_DIM, fontSize: 10 }}>
+                        {f === "inflationary" ? "Gold, USD" : f === "fixed" ? "BTC" : f === "deflationary" ? "₸USD" : ""}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Line chart */}
+          <ResponsiveContainer width="100%" height={320}>
+            <LineChart data={deflData}>
+              <XAxis
+                dataKey="year"
+                tick={{ fontSize: 11, fill: "#a6a6a6" }}
+                stroke="#1c1c1c"
+                interval={1}
+              />
+              <YAxis
+                tick={{ fontSize: 11, fill: "#a6a6a6" }}
+                stroke="#1c1c1c"
+                width={45}
+                domain={[92, "auto"]}
+                tickFormatter={(v: number) => v.toFixed(0)}
+              />
+              <Tooltip
+                content={({ active, payload }) => {
+                  if (!active || !payload || !payload.length) return null;
+                  const d = payload[0]?.payload as Record<string, any>;
+                  return (
+                    <div style={{ background: "#0c0c0c", border: "1px solid #1c1c1c", borderRadius: 8, padding: "8px 12px", color: "#e8e8e8", fontSize: 12 }}>
+                      <div className="font-semibold mb-1">{d.year}{d.projected ? " (projected)" : ""}</div>
+                      {visibleDeflAssets.map(({ key, label, color }) => {
+                        const val = d[key] ?? d[`${key}_p`];
+                        if (val == null) return null;
+                        const change = val - 100;
+                        return (
+                          <div key={key}>
+                            <span style={{ color }}>{label}:</span> {val.toFixed(1)}
+                            <span style={{ color: change >= 0 ? TEXT_MUTED : GOLD, marginLeft: 4 }}>
+                              ({change >= 0 ? "+" : ""}{change.toFixed(1)}%)
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                }}
+              />
+              {/* Reference line at 100 */}
+              <Line
+                type="monotone"
+                dataKey={() => 100}
+                stroke="#333"
+                strokeWidth={1}
+                strokeDasharray="4 4"
+                dot={false}
+                isAnimationActive={false}
+              />
+              {visibleDeflAssets.flatMap(({ key, color }) => [
+                <Line
+                  key={`${key}-solid`}
+                  type="monotone"
+                  dataKey={key}
+                  stroke={color}
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls
+                  isAnimationActive={false}
+                />,
+                <Line
+                  key={`${key}-dash`}
+                  type="monotone"
+                  dataKey={`${key}_p`}
+                  stroke={color}
+                  strokeWidth={2}
+                  strokeDasharray="6 4"
+                  dot={false}
+                  connectNulls
+                  isAnimationActive={false}
+                />,
+              ])}
+            </LineChart>
+          </ResponsiveContainer>
+
+          {/* Annual rate badges */}
+          <div className="flex flex-wrap justify-center gap-3 mt-4">
+            {deflAssets.filter(a => deflFilter === "all" || a.category === deflFilter).map(({ key, label, color }) => {
+              const rate = key === "usd" ? 4.5 : key === "gold" ? 1.0 : key === "btc" ? 0.83 : -1.28;
+              return (
+                <div key={key} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full" style={{ border: `1px solid ${color}30`, background: `${color}10` }}>
+                  <span className="w-2 h-2 rounded-full" style={{ background: color }} />
+                  <span style={{ color: TEXT_MUTED }}>{label.split(" ")[0]}</span>
+                  <span className="font-semibold" style={{ color }}>
+                    {rate >= 0 ? "+" : ""}{rate}%/yr
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
 
       {/* Treasury Composition Chart — stacked area by asset category */}
       <div className="max-w-4xl w-full px-4 mb-8">
