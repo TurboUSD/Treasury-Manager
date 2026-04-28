@@ -2286,6 +2286,18 @@ const Home: NextPage = () => {
   const [deflHidden, setDeflHidden] = useState<Set<string>>(new Set());
   const [deflFilter, setDeflFilter] = useState<"all" | "inflationary" | "fixed" | "deflationary">("all");
   const [deflFilterOpen, setDeflFilterOpen] = useState(false);
+  const deflFilterRef = useRef<HTMLDivElement>(null);
+
+  // Close deflation filter dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (deflFilterRef.current && !deflFilterRef.current.contains(e.target as Node)) {
+        setDeflFilterOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const deflAssets = useMemo(() => [
     { key: "usd", label: "US Dollar (M2)", color: "#888888", category: "inflationary" as const },
@@ -2739,17 +2751,17 @@ const Home: NextPage = () => {
             value={tusdBalNum > 0 ? `${fmtBig(tusdBalNum)} \u20B8USD` : `0 \u20B8USD`}
             subtitle={tusdBalUsd > 0 ? fmtUsd(tusdBalUsd) : "\u2014"}
           />
-          <StatCard
-            title="WETH Balance"
-            value={wethBalNum > 0 ? `${wethBalNum.toFixed(2)} WETH` : "0 WETH"}
-            subtitle={wethBalUsd > 0 ? fmtUsd(wethBalUsd) : "\u2014"}
-          />
+          <StatCard title="Strategic Portfolio" value={fmtUsd(strategicTotalUsd)} subtitle="(Combined token value)" />
           <StatCard
             title="USDC Balance"
             value={usdcBalNum > 0 ? `${usdcBalNum < 1000 ? usdcBalNum.toFixed(2) : fmtBig(usdcBalNum)} USDC` : "0 USDC"}
             subtitle={usdcBalUsd > 0 ? fmtUsd(usdcBalUsd) : "\u2014"}
           />
-          <StatCard title="Strategic Portfolio" value={fmtUsd(strategicTotalUsd)} subtitle="(Combined token value)" />
+          <StatCard
+            title="WETH Balance"
+            value={wethBalNum > 0 ? `${wethBalNum.toFixed(2)} WETH` : "0 WETH"}
+            subtitle={wethBalUsd > 0 ? fmtUsd(wethBalUsd) : "\u2014"}
+          />
         </div>
       </div>
 
@@ -2999,7 +3011,7 @@ const Home: NextPage = () => {
               style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
             >
               {/* Subtitle — single line, full width on mobile */}
-              <p className="text-[10px] sm:text-xs uppercase tracking-wider mb-1.5 whitespace-nowrap overflow-hidden text-ellipsis" style={{ color: TEXT_MUTED }}>
+              <p className="text-[10px] sm:text-xs uppercase tracking-wider mb-1.5 whitespace-nowrap overflow-hidden text-ellipsis" style={{ color: TEXT_MUTED, marginTop: 0 }}>
                 Potential buyback if all tokens reach $100M
               </p>
 
@@ -3342,46 +3354,81 @@ const Home: NextPage = () => {
       <div className="max-w-4xl w-full px-4 mb-8">
         <SectionTitle>The Deflation Edge</SectionTitle>
         <div className="rounded-xl p-4 sm:p-6" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
-          {/* Top controls: Asset filter left, Projection legend right */}
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            {/* Left: Asset filter with category checkboxes */}
-            <div className="flex items-center gap-3">
-              <div className="relative">
+          {/* Row 1: Individual asset legend */}
+          <div className="flex flex-wrap gap-3 text-xs mb-3">
+            {deflAssets.map(({ key, label, color }) => {
+              const hidden = deflHidden.has(key);
+              return (
                 <button
-                  onClick={() => setDeflFilterOpen(prev => !prev)}
-                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded transition-colors"
-                  style={{ background: "transparent", color: "#fff" }}
+                  key={key}
+                  onClick={() => {
+                    setDeflHidden(prev => {
+                      const next = new Set(prev);
+                      next.has(key) ? next.delete(key) : next.add(key);
+                      return next;
+                    });
+                  }}
+                  className="flex items-center gap-1.5 transition-opacity"
+                  style={{ opacity: hidden ? 0.35 : 1 }}
                 >
-                  Asset
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-                  </svg>
+                  <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: hidden ? "#555" : color }} />
+                  <span style={{ color: hidden ? TEXT_DIM : TEXT_MUTED, textDecoration: hidden ? "line-through" : "none" }}>
+                    {label}
+                  </span>
                 </button>
-                {deflFilterOpen && (
-                  <div className="absolute left-0 mt-1 rounded-lg z-10 p-2" style={{ background: "#1c1c1c", border: "1px solid #333", minWidth: 150 }}>
-                    {/* All assets option */}
+              );
+            })}
+          </div>
+          {/* Row 2: Asset filter left, Projection right */}
+          <div className="flex items-center justify-between mb-4">
+            {/* Asset filter — matches ops filter style */}
+            <div ref={deflFilterRef} className="inline-flex items-center gap-1">
+              <span className="text-[10px] sm:text-xs uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Asset</span>
+              <button
+                onClick={() => setDeflFilterOpen(prev => !prev)}
+                className="inline-flex items-center justify-center"
+                style={{ color: deflHidden.size > 0 ? GOLD : TEXT_MUTED }}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill={deflHidden.size > 0 ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
+              </button>
+              {deflFilterOpen && (() => {
+                const rect = deflFilterRef.current?.getBoundingClientRect();
+                return (
+                  <div
+                    className="fixed rounded-lg shadow-xl py-2 px-3"
+                    style={{
+                      background: "#1a1a1a",
+                      border: `1px solid ${CARD_BORDER}`,
+                      minWidth: 150,
+                      zIndex: 9999,
+                      top: rect ? rect.bottom + 4 : 0,
+                      left: rect ? rect.left : 0,
+                    }}
+                    onClick={e => e.stopPropagation()}
+                  >
                     <button
                       onClick={() => { setDeflHidden(new Set()); setDeflFilterOpen(false); }}
                       className="w-full text-left py-1 text-xs hover:bg-[#333] flex items-center gap-2 rounded px-1"
                       style={{ color: deflHidden.size === 0 ? GOLD : "#888" }}
                     >
                       <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: deflHidden.size === 0 ? GOLD : "transparent" }} />
-                      All Assets
+                      All assets
                     </button>
                     {(["inflationary", "fixed", "deflationary"] as const).map(cat => {
                       const catAssets = deflAssets.filter(a => a.category === cat);
-                      const allHidden = catAssets.every(a => deflHidden.has(a.key));
-                      const selected = !allHidden;
+                      const someVisible = catAssets.some(a => !deflHidden.has(a.key));
+                      const allVisible = catAssets.every(a => !deflHidden.has(a.key));
+                      const selected = deflHidden.size > 0 && someVisible;
                       return (
                         <button
                           key={cat}
                           onClick={() => {
                             setDeflHidden(prev => {
                               const next = new Set(prev);
-                              if (allHidden) {
-                                catAssets.forEach(a => next.delete(a.key));
-                              } else {
+                              if (allVisible) {
                                 catAssets.forEach(a => next.add(a.key));
+                              } else {
+                                catAssets.forEach(a => next.delete(a.key));
                               }
                               return next;
                             });
@@ -3395,35 +3442,10 @@ const Home: NextPage = () => {
                       );
                     })}
                   </div>
-                )}
-              </div>
-              {/* Individual asset legend */}
-              <div className="flex flex-wrap gap-3 text-xs">
-                {deflAssets.map(({ key, label, color }) => {
-                  const hidden = deflHidden.has(key);
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => {
-                        setDeflHidden(prev => {
-                          const next = new Set(prev);
-                          next.has(key) ? next.delete(key) : next.add(key);
-                          return next;
-                        });
-                      }}
-                      className="flex items-center gap-1.5 transition-opacity"
-                      style={{ opacity: hidden ? 0.35 : 1 }}
-                    >
-                      <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: hidden ? "#555" : color }} />
-                      <span style={{ color: hidden ? TEXT_DIM : TEXT_MUTED, textDecoration: hidden ? "line-through" : "none" }}>
-                        {label}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+                );
+              })()}
             </div>
-            {/* Right: Projection legend */}
+            {/* Projection legend */}
             <div className="flex items-center gap-1.5 flex-shrink-0">
               <svg width="24" height="2" viewBox="0 0 24 2">
                 <line x1="0" y1="1" x2="24" y2="1" stroke="#fff" strokeWidth="2" strokeDasharray="5 3" />
@@ -3634,7 +3656,7 @@ const Home: NextPage = () => {
                             <div className="flex-1 min-w-0">
                               <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: TEXT_DIM }}>Types</div>
                               {[
-                                { v: "all", l: "All Types" },
+                                { v: "all", l: "All types" },
                                 { v: "buyback", l: "Buyback" },
                                 { v: "burn", l: "Burn" },
                                 { v: "rebalance", l: "Rebalance" },
@@ -3680,7 +3702,7 @@ const Home: NextPage = () => {
                                 style={{ color: opsTokenFilter.size === 0 ? GOLD : "#888" }}
                               >
                                 <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: opsTokenFilter.size === 0 ? GOLD : "transparent" }} />
-                                All Tokens
+                                All tokens
                               </button>
                               {(() => {
                                 const tokenSet = new Set<string>();
