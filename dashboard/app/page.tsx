@@ -2284,7 +2284,7 @@ const Home: NextPage = () => {
 
   // ── Deflation Edge chart ──────────────────────────────────────────────────
   const [deflHidden, setDeflHidden] = useState<Set<string>>(new Set());
-  const [deflFilter, setDeflFilter] = useState<"all" | "inflationary" | "fixed" | "deflationary">("all");
+  const [deflCats, setDeflCats] = useState<Set<string>>(new Set(["inflationary", "fixed", "deflationary"]));
   const [deflFilterOpen, setDeflFilterOpen] = useState(false);
   const deflFilterRef = useRef<HTMLDivElement>(null);
 
@@ -2359,9 +2359,9 @@ const Home: NextPage = () => {
   }, []);
 
   const deflFilterLabels: Record<string, string> = {
-    all: "All",
+    all: "All types",
     inflationary: "Inflationary",
-    fixed: "Fixed Supply",
+    fixed: "Capped",
     deflationary: "Deflationary",
   };
 
@@ -3380,19 +3380,22 @@ const Home: NextPage = () => {
             })}
           </div>
           {/* Row 2: Asset filter left, Projection right */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 mt-1">
             {/* Asset filter — matches ops filter style */}
             <div ref={deflFilterRef} className="inline-flex items-center gap-1">
-              <span className="text-[10px] sm:text-xs uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Asset</span>
+              <span className="text-[10px] sm:text-xs uppercase tracking-wider" style={{ color: TEXT_MUTED }}>Supply model</span>
+              {(() => { const allOn = deflCats.size === 3; return (
               <button
                 onClick={() => setDeflFilterOpen(prev => !prev)}
                 className="inline-flex items-center justify-center"
-                style={{ color: deflHidden.size > 0 ? GOLD : TEXT_MUTED }}
+                style={{ color: allOn ? TEXT_MUTED : GOLD }}
               >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill={deflHidden.size > 0 ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill={allOn ? "none" : "currentColor"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
               </button>
+              ); })()}
               {deflFilterOpen && (() => {
                 const rect = deflFilterRef.current?.getBoundingClientRect();
+                const allOn = deflCats.size === 3;
                 return (
                   <div
                     className="fixed rounded-lg shadow-xl py-2 px-3"
@@ -3406,37 +3409,44 @@ const Home: NextPage = () => {
                     }}
                     onClick={e => e.stopPropagation()}
                   >
+                    {/* All supply types */}
                     <button
-                      onClick={() => { setDeflHidden(new Set()); setDeflFilterOpen(false); }}
+                      onClick={() => {
+                        setDeflCats(new Set(["inflationary", "fixed", "deflationary"]));
+                        setDeflHidden(new Set());
+                      }}
                       className="w-full text-left py-1 text-xs hover:bg-[#333] flex items-center gap-2 rounded px-1"
-                      style={{ color: deflHidden.size === 0 ? GOLD : "#888" }}
+                      style={{ color: allOn ? GOLD : "#888" }}
                     >
-                      <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: deflHidden.size === 0 ? GOLD : "transparent" }} />
-                      All assets
+                      <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: allOn ? GOLD : "transparent" }} />
+                      {deflFilterLabels["all"]}
                     </button>
+                    {/* Category toggles */}
                     {(["inflationary", "fixed", "deflationary"] as const).map(cat => {
-                      const catAssets = deflAssets.filter(a => a.category === cat);
-                      const someVisible = catAssets.some(a => !deflHidden.has(a.key));
-                      const allVisible = catAssets.every(a => !deflHidden.has(a.key));
-                      const selected = deflHidden.size > 0 && someVisible;
+                      const active = deflCats.has(cat);
                       return (
                         <button
                           key={cat}
                           onClick={() => {
-                            setDeflHidden(prev => {
+                            setDeflCats(prev => {
                               const next = new Set(prev);
-                              if (allVisible) {
-                                catAssets.forEach(a => next.add(a.key));
+                              if (active) {
+                                // Don't allow deselecting the last one
+                                if (next.size <= 1) return prev;
+                                next.delete(cat);
                               } else {
-                                catAssets.forEach(a => next.delete(a.key));
+                                next.add(cat);
                               }
+                              // Sync deflHidden from the new cat set
+                              const toHide = new Set(deflAssets.filter(a => !next.has(a.category)).map(a => a.key));
+                              setDeflHidden(toHide);
                               return next;
                             });
                           }}
                           className="w-full text-left py-1 text-xs hover:bg-[#333] flex items-center gap-2 rounded px-1"
-                          style={{ color: selected ? "#fff" : "#888" }}
+                          style={{ color: active && !allOn ? "#fff" : active && allOn ? "#888" : "#888" }}
                         >
-                          <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: selected ? GOLD : "transparent" }} />
+                          <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: active && !allOn ? GOLD : "transparent" }} />
                           {deflFilterLabels[cat]}
                         </button>
                       );
