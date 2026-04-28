@@ -2323,7 +2323,7 @@ const Home: NextPage = () => {
 
     const years = Array.from({ length: 15 }, (_, i) => 2016 + i);
     let usdIdx = 100, goldIdx = 100, btcIdx = 100, tusdIdx = 100;
-    const PROJ = 2026; // first projected year
+    const PROJ = 2027; // first projected year (all assets solid through 2026)
     return years.map(y => {
       if (y > 2016) {
         usdIdx *= 1 + (usdRates[y] ?? 5) / 100;
@@ -2337,15 +2337,11 @@ const Home: NextPage = () => {
       const tV = y >= 2025 ? Math.round(tusdIdx * 100) / 100 : null;
       const isProj = y >= PROJ;
       const isBridge = y === PROJ - 1;
-      // TurboUSD launched mid-2025, so its "historical" period extends to 2026
-      const tusdBridge = y === 2026;
       return {
         year: y.toString(),
         projected: isProj,
-        ...((!isProj || isBridge) ? { usd: uV, gold: gV, btc: bV } : {}),
-        ...((isProj || isBridge) ? { usd_p: uV, gold_p: gV, btc_p: bV } : {}),
-        ...(tV != null && (!isProj || isBridge || tusdBridge) ? { tusd: tV } : {}),
-        ...(tV != null && (isProj || isBridge || tusdBridge) ? { tusd_p: tV } : {}),
+        ...((!isProj || isBridge) ? { usd: uV, gold: gV, btc: bV, ...(tV != null ? { tusd: tV } : {}) } : {}),
+        ...((isProj || isBridge) ? { usd_p: uV, gold_p: gV, btc_p: bV, ...(tV != null ? { tusd_p: tV } : {}) } : {}),
       };
     });
   }, []);
@@ -2358,12 +2354,8 @@ const Home: NextPage = () => {
   };
 
   const visibleDeflAssets = useMemo(() => {
-    return deflAssets.filter(a => {
-      if (deflHidden.has(a.key)) return false;
-      if (deflFilter === "all") return true;
-      return a.category === deflFilter;
-    });
-  }, [deflAssets, deflHidden, deflFilter]);
+    return deflAssets.filter(a => !deflHidden.has(a.key));
+  }, [deflAssets, deflHidden]);
 
   // ── Chart controls ───────────────────────────────────────────────────────
   const [chartView, setChartView] = useState<"all" | "strategic">("all");
@@ -3007,7 +2999,7 @@ const Home: NextPage = () => {
               style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
             >
               {/* Subtitle — single line, full width on mobile */}
-              <p className="text-[10px] sm:text-xs uppercase tracking-wider mb-3 whitespace-nowrap overflow-hidden text-ellipsis" style={{ color: TEXT_MUTED }}>
+              <p className="text-[10px] sm:text-xs uppercase tracking-wider mb-1.5 whitespace-nowrap overflow-hidden text-ellipsis" style={{ color: TEXT_MUTED }}>
                 Potential buyback if all tokens reach $100M
               </p>
 
@@ -3350,43 +3342,10 @@ const Home: NextPage = () => {
       <div className="max-w-4xl w-full px-4 mb-8">
         <SectionTitle>The Deflation Edge</SectionTitle>
         <div className="rounded-xl p-4 sm:p-6" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
-          {/* Top controls: legend left, asset filter right */}
-          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-            {/* Clickable legend */}
-            <div className="flex flex-wrap gap-3 text-xs">
-              {deflAssets.map(({ key, label, color }) => {
-                const hidden = deflHidden.has(key) || (deflFilter !== "all" && deflAssets.find(a => a.key === key)?.category !== deflFilter);
-                return (
-                  <button
-                    key={key}
-                    onClick={() => {
-                      setDeflHidden(prev => {
-                        const next = new Set(prev);
-                        next.has(key) ? next.delete(key) : next.add(key);
-                        return next;
-                      });
-                    }}
-                    className="flex items-center gap-1.5 transition-opacity"
-                    style={{ opacity: hidden ? 0.35 : 1 }}
-                  >
-                    <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: hidden ? "#555" : color }} />
-                    <span style={{ color: hidden ? TEXT_DIM : TEXT_MUTED, textDecoration: hidden ? "line-through" : "none" }}>
-                      {label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            {/* Right side: Asset filter + Projection legend */}
-            <div className="flex items-center gap-4 flex-shrink-0">
-              {/* Projection legend */}
-              <div className="flex items-center gap-1.5">
-                <svg width="24" height="2" viewBox="0 0 24 2">
-                  <line x1="0" y1="1" x2="24" y2="1" stroke="#fff" strokeWidth="2" strokeDasharray="5 3" />
-                </svg>
-                <span className="text-[10px]" style={{ color: TEXT_DIM }}>Projection</span>
-              </div>
-              {/* Asset filter dropdown */}
+          {/* Top controls: Asset filter left, Projection legend right */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            {/* Left: Asset filter with category checkboxes */}
+            <div className="flex items-center gap-3">
               <div className="relative">
                 <button
                   onClick={() => setDeflFilterOpen(prev => !prev)}
@@ -3399,26 +3358,77 @@ const Home: NextPage = () => {
                   </svg>
                 </button>
                 {deflFilterOpen && (
-                  <div className="absolute mt-1 rounded-lg overflow-hidden z-10" style={{ background: "#1c1c1c", border: "1px solid #333", minWidth: 160, right: "auto", left: "50%", transform: "translateX(-70%)" }}>
-                    {(["all", "inflationary", "fixed", "deflationary"] as const).map(f => (
-                      <button
-                        key={f}
-                        onClick={() => { setDeflFilter(f); setDeflFilterOpen(false); }}
-                        className="block w-full text-left px-3 py-2 text-xs font-medium transition-colors"
-                        style={{
-                          background: deflFilter === f ? "#ffffff10" : "transparent",
-                          color: deflFilter === f ? "#fff" : TEXT_MUTED,
-                        }}
-                      >
-                        {deflFilterLabels[f]}
-                        <span className="ml-1" style={{ color: TEXT_DIM, fontSize: 10 }}>
-                          {f === "inflationary" ? "Gold, USD" : f === "fixed" ? "BTC" : f === "deflationary" ? "₸USD" : ""}
-                        </span>
-                      </button>
-                    ))}
+                  <div className="absolute left-0 mt-1 rounded-lg z-10 p-2" style={{ background: "#1c1c1c", border: "1px solid #333", minWidth: 150 }}>
+                    {/* All assets option */}
+                    <button
+                      onClick={() => { setDeflHidden(new Set()); setDeflFilterOpen(false); }}
+                      className="w-full text-left py-1 text-xs hover:bg-[#333] flex items-center gap-2 rounded px-1"
+                      style={{ color: deflHidden.size === 0 ? GOLD : "#888" }}
+                    >
+                      <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: deflHidden.size === 0 ? GOLD : "transparent" }} />
+                      All Assets
+                    </button>
+                    {(["inflationary", "fixed", "deflationary"] as const).map(cat => {
+                      const catAssets = deflAssets.filter(a => a.category === cat);
+                      const allHidden = catAssets.every(a => deflHidden.has(a.key));
+                      const selected = !allHidden;
+                      return (
+                        <button
+                          key={cat}
+                          onClick={() => {
+                            setDeflHidden(prev => {
+                              const next = new Set(prev);
+                              if (allHidden) {
+                                catAssets.forEach(a => next.delete(a.key));
+                              } else {
+                                catAssets.forEach(a => next.add(a.key));
+                              }
+                              return next;
+                            });
+                          }}
+                          className="w-full text-left py-1 text-xs hover:bg-[#333] flex items-center gap-2 rounded px-1"
+                          style={{ color: selected ? "#fff" : "#888" }}
+                        >
+                          <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: selected ? GOLD : "transparent" }} />
+                          {deflFilterLabels[cat]}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
+              {/* Individual asset legend */}
+              <div className="flex flex-wrap gap-3 text-xs">
+                {deflAssets.map(({ key, label, color }) => {
+                  const hidden = deflHidden.has(key);
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        setDeflHidden(prev => {
+                          const next = new Set(prev);
+                          next.has(key) ? next.delete(key) : next.add(key);
+                          return next;
+                        });
+                      }}
+                      className="flex items-center gap-1.5 transition-opacity"
+                      style={{ opacity: hidden ? 0.35 : 1 }}
+                    >
+                      <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: hidden ? "#555" : color }} />
+                      <span style={{ color: hidden ? TEXT_DIM : TEXT_MUTED, textDecoration: hidden ? "line-through" : "none" }}>
+                        {label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            {/* Right: Projection legend */}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <svg width="24" height="2" viewBox="0 0 24 2">
+                <line x1="0" y1="1" x2="24" y2="1" stroke="#fff" strokeWidth="2" strokeDasharray="5 3" />
+              </svg>
+              <span className="text-[10px]" style={{ color: TEXT_DIM }}>Projection</span>
             </div>
           </div>
 
@@ -3490,7 +3500,7 @@ const Home: NextPage = () => {
 
           {/* Annual rate badges */}
           <div className="flex flex-wrap justify-center gap-3 mt-3">
-            {deflAssets.filter(a => deflFilter === "all" || a.category === deflFilter).map(({ key, label, color }) => {
+            {deflAssets.filter(a => !deflHidden.has(a.key)).map(({ key, label, color }) => {
               const rate = key === "usd" ? 4.5 : key === "gold" ? 1.0 : key === "btc" ? 0.83 : -1.28;
               return (
                 <div key={key} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full" style={{ border: `1px solid ${color}30`, background: `${color}10` }}>
