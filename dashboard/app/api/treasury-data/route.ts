@@ -22,6 +22,7 @@ const LEGACY_FEE_SOURCE = "0x1eaf444ebDf6495C57aD52A04C61521bBf564ace";
 const LP_FEE_SOURCE = "0x33e2Eda238edcF470309b8c6D228986A1204c8f9";
 const LEGACY_FEE_CLAIMER = "0x2c857A891338fe17D86651B7B78C59c96e274246"; // Permissionless: claims both legacy + LP fees
 const STAKING_CONTRACT = "0x2a70a42BC0524aBCA9Bff59a51E7aAdB575DC89A";
+const LIQUID_STAKING_CONTRACT = "0x2958489b3132f0c9B04d499C21017a8289B021bc";
 
 // ── Strategic tokens ───────────────────────────────────────────────────────
 type StratToken = {
@@ -293,6 +294,8 @@ export async function GET() {
       { address: TUSD as `0x${string}`, abi: [erc20BalanceOf] as const, functionName: "balanceOf" as const, args: [TUSD_POOL as `0x${string}`] },
       // 37: WETH balance in Uniswap pool (for price impact calc)
       { address: WETH_ADDR as `0x${string}`, abi: [erc20BalanceOf] as const, functionName: "balanceOf" as const, args: [TUSD_POOL as `0x${string}`] },
+      // 38: TUSD balance in Liquid Staking contract
+      { address: TUSD as `0x${string}`, abi: [erc20BalanceOf] as const, functionName: "balanceOf" as const, args: [LIQUID_STAKING_CONTRACT as `0x${string}`] },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ] as any;
     const results = await client.multicall({ contracts });
@@ -314,6 +317,7 @@ export async function GET() {
     const legacyTusdPending = val(11) as bigint | null;
     const lpTusdPending = val(12) as bigint | null;
     const lpWethPending = val(13) as bigint | null;
+    const tusdLiquidStakedBal = val(38) as bigint | null;
 
     // Strategic balances (indices 14-20)
     const stratBalances: Record<string, number> = {};
@@ -366,6 +370,7 @@ export async function GET() {
     const tusdSupplyNum = tusdSupply ? Number(formatEther(tusdSupply)) : 0;
     const tusdBurnedNum = tusdBurned ? Number(formatEther(tusdBurned)) : 0;
     const tusdStakedNum = tusdStakedBal ? Number(formatEther(tusdStakedBal)) : 0;
+    const tusdLiquidStakedNum = tusdLiquidStakedBal ? Number(formatEther(tusdLiquidStakedBal)) : 0;
     const pendingTusd = (legacyTusdPending ? Number(formatEther(legacyTusdPending)) : 0) + (lpTusdPending ? Number(formatEther(lpTusdPending)) : 0);
     const pendingWeth = lpWethPending ? Number(formatEther(lpWethPending)) : 0;
 
@@ -898,6 +903,7 @@ export async function GET() {
       tusdSupplyNum,
       tusdBurnedNum,
       tusdStakedNum,
+      tusdLiquidStakedNum,
       pendingTusd,
       pendingWeth,
       engineBurned,

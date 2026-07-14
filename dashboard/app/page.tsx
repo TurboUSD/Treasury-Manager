@@ -1991,6 +1991,7 @@ const Home: NextPage = () => {
     tusdSupplyNum: number;
     tusdBurnedNum: number;
     tusdStakedNum: number;
+    tusdLiquidStakedNum: number;
     pendingTusd: number;
     pendingWeth: number;
     engineBurned: number;
@@ -2093,6 +2094,7 @@ const Home: NextPage = () => {
   const tusdSupplyNum = apiData?.tusdSupplyNum ?? 0;
   const tusdBurnedNum = apiData?.tusdBurnedNum ?? 0;
   const tusdStakedNum = apiData?.tusdStakedNum ?? 0;
+  const tusdLiquidStakedNum = apiData?.tusdLiquidStakedNum ?? 0;
   const pendingTusd = apiData?.pendingTusd ?? 0;
   const pendingWeth = apiData?.pendingWeth ?? 0;
   const engineBurned = apiData?.engineBurned ?? 0;
@@ -2140,7 +2142,7 @@ const Home: NextPage = () => {
   const buybackPct = tusdSupplyNum > 0 ? (totalBuybackTusd / tusdSupplyNum) * 100 : 0;
   const buybackUsd = totalBuybackTusd * tusdPriceUsd;
 
-  const totalLockedTusd = tusdBalNum + tusdStakedNum;
+  const totalLockedTusd = tusdBalNum + tusdStakedNum + tusdLiquidStakedNum;
 
   const pendingTusdUsd = pendingTusd * tusdPriceUsd;
   const pendingWethUsd = pendingWeth * wethPriceUsd;
@@ -2708,6 +2710,7 @@ const Home: NextPage = () => {
             tooltip={
               <div style={{ lineHeight: 1.7 }}>
                 <div><span style={{ color: "#fff", fontWeight: 600 }}>Staking:</span> {fmtBigRound(tusdStakedNum)} ₸USD</div>
+                <div><span style={{ color: "#fff", fontWeight: 600 }}>Liquid Staking:</span> {fmtBigRound(tusdLiquidStakedNum)} ₸USD</div>
                 <div><span style={{ color: "#fff", fontWeight: 600 }}>Treasury:</span> {fmtBigRound(tusdBalNum)} ₸USD</div>
               </div>
             }
