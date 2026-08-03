@@ -80,6 +80,7 @@ type Marker = {
   sub: string;
   price: number | null;
   tx: string;
+  ex: string;
 };
 
 type Pt = { t: number; o: number; h: number; l: number; c: number; p: number };
@@ -144,10 +145,17 @@ function niceTicks(min: number, max: number, n: number): number[] {
   return ticks;
 }
 
+type OpStats = {
+  burned: number; burns: number; clankerBurned: number; clankerBurns: number;
+  bought: number; buys: number;
+  stakedAmi: number; stakesAmi: number; stakesAll: number;
+};
+
 function processOps(rows: AmiOpRow[]): {
   markers: Marker[];
   avgCost: number | null;
   burnEvents: { t: number; amt: number }[];
+  stats: OpStats;
 } {
   const groups: Record<string, AmiOpRow[]> = {};
   const order: string[] = [];
@@ -166,6 +174,10 @@ function processOps(rows: AmiOpRow[]): {
 
   const markers: Marker[] = [];
   const burnEvents: { t: number; amt: number }[] = [];
+  const stats: OpStats = {
+    burned: 0, burns: 0, clankerBurned: 0, clankerBurns: 0,
+    bought: 0, buys: 0, stakedAmi: 0, stakesAmi: 0, stakesAll: 0,
+  };
   let bbUsd = 0,
     bbTusd = 0;
   for (const key of order) {
@@ -191,6 +203,8 @@ function processOps(rows: AmiOpRow[]): {
       if (op.exchange && op.exchange.includes("v1")) sub += ` · ${op.exchange}`;
       bbUsd += spent;
       bbTusd += tusd;
+      stats.bought += tusd;
+      stats.buys++;
     } else if (t === "StrategicBuy") {
       const tr = rws.find(r => r.type === "Trade") || op;
       usd = (tr.sell_amount || 0) * (tr.weth_price_usd || 0);
@@ -202,15 +216,38 @@ function processOps(rows: AmiOpRow[]): {
       usd = burned * (br.token_price_usd || 0);
       main = `${fmtAmt(burned)} ₸USD burned 🔥`;
       const author =
-        op.exchange && op.exchange.includes("v1") ? op.exchange : t === "BurnEngine" ? "BurnEngine" : "Treasury";
+        op.exchange && (op.exchange === "Clanker" || op.exchange.includes("v1"))
+          ? op.exchange
+          : t === "BurnEngine"
+            ? "BurnEngine"
+            : "Treasury";
       sub = `${author} · ${fmtUsd(usd)}`;
+      stats.burned += burned;
+      stats.burns++;
+      if (op.exchange === "Clanker") {
+        stats.clankerBurned += burned;
+        stats.clankerBurns++;
+      }
       burnEvents.push({ t: ts, amt: burned });
     } else if (t === "Stake") {
       const sr = rws.find(r => r.sell_currency === "TUSD2") || op;
       const staked = sr.sell_amount || 0;
       usd = staked * (sr.token_price_usd || 0);
       main = `${fmtAmt(staked)} ₸USD staked`;
-      sub = fmtUsd(usd);
+      const sAuthor =
+        op.exchange === "Liquid staking"
+          ? "Liquid staking"
+          : op.exchange === "Staking contract"
+            ? "Staking contract"
+            : op.exchange && op.exchange.includes("v1")
+              ? op.exchange
+              : "Treasury";
+      sub = `${sAuthor} · ${fmtUsd(usd)}`;
+      stats.stakesAll++;
+      if (sAuthor === "Treasury" || sAuthor.includes("v1")) {
+        stats.stakedAmi += staked;
+        stats.stakesAmi++;
+      }
     } else if (t === "FeeClaim") {
       const cur = op.buy_currency || "";
       const amt = op.buy_amount || 0;
@@ -240,11 +277,11 @@ function processOps(rows: AmiOpRow[]): {
       sub = `Rebalance · ${fmtUsd(usd)}`;
     }
 
-    markers.push({ t: ts, type: t, usd, main, sub, price: opPrice, tx: op.tx_hash || "" });
+    markers.push({ t: ts, type: t, usd, main, sub, price: opPrice, tx: op.tx_hash || "", ex: op.exchange || "" });
   }
 
   burnEvents.sort((a, b) => a.t - b.t);
-  return { markers, avgCost: bbTusd > 0 ? bbUsd / bbTusd : null, burnEvents };
+  return { markers, avgCost: bbTusd > 0 ? bbUsd / bbTusd : null, burnEvents, stats };
 }
 
 /* ── marker shape ── */
@@ -287,9 +324,12 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
   const [width, setWidth] = useState(800);
   const [range, setRange] = useState("90D");
   const [metric, setMetric] = useState<"price" | "mcap">("price");
+  const [opAuthor, setOpAuthor] = useState<"all" | "ami">("ami"); // el treasury muestra AMI por defecto
   const [ctype, setCtype] = useState<"line" | "candles">("line");
   const [supplyNow, setSupplyNow] = useState<number | null>(null);
   const [burnedNow, setBurnedNow] = useState<number>(0);
+  const [cacheD, setCacheD] = useState<Record<string, number> | null>(null);
+  const [cacheAge, setCacheAge] = useState<number | null>(null);
   const [prices, setPrices] = useState<Pt[]>([]);
   const [candles, setCandles] = useState<Pt[]>([]);
   const [apiOps, setApiOps] = useState<AmiOpRow[]>([]);
@@ -344,6 +384,8 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
         if (Array.isArray(j.operations) && j.operations.length) setApiOps(j.operations as AmiOpRow[]);
         const bn = Number(j.cache?.data?.tusdBurnedNum || 0);
         if (bn > 0) setBurnedNow(bn);
+        if (j.cache?.data) setCacheD(j.cache.data as Record<string, number>);
+        if (j.cache?.updated_at) setCacheAge(Math.max(0, Math.round((Date.now() - Date.parse(j.cache.updated_at)) / 60000)));
       })
       .catch(() => undefined);
     return () => {
@@ -398,7 +440,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
   }, [range, candles]);
 
   /* preferimos las ops del API (incluyen las legacy de Treasury Manager v1) */
-  const { markers, avgCost, burnEvents } = useMemo(
+  const { markers, avgCost, burnEvents, stats } = useMemo(
     () => processOps(apiOps.length ? apiOps : operations || []),
     [apiOps, operations],
   );
@@ -485,6 +527,10 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
 
     const visible = markers.filter(m => {
       if (m.t < t0 || m.t > t1) return false;
+      if (opAuthor === "ami") {
+        if (m.ex === "Clanker") return false;
+        if (m.type === "Stake" && (m.ex === "Liquid staking" || m.ex === "Staking contract")) return false;
+      }
       const lg = LEGEND.find(l => l.types.indexOf(m.type) !== -1);
       return !(lg && hidden.has(lg.key));
     });
@@ -531,7 +577,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
     const barW = Math.max(1.5, Math.min(14, ((width - PAD.l - PAD.r) / Math.max(1, usable.length)) * 0.7));
 
     return { t0, t1, f0, f1, pmin, pmax, X, Y, placed, pts: usable, dLine, dArea, barW, ticks: niceTicks(pmin, pmax, 4) };
-  }, [viewAll, view, yman, ctype, metric, F, markers, hidden, width, H, avgCost, PAD.l, PAD.r, PAD.t, PAD.b]);
+  }, [viewAll, view, yman, ctype, metric, F, markers, hidden, opAuthor, width, H, avgCost, PAD.l, PAD.r, PAD.t, PAD.b]);
 
   /* ── zoom helpers ── */
   const clampView = (x0: number, x1: number) => {
@@ -748,6 +794,36 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
       className="rounded-xl p-4"
       style={{ background: SURFACE, border: "1px solid #262626", fontFamily: "ui-monospace, SF Mono, Menlo, monospace" }}
     >
+      {/* stats row */}
+      {(() => {
+        const px = Number(cacheD?.tusdPriceUsd || 0);
+        const ami = opAuthor === "ami";
+        const burnedAll = Number(cacheD?.tusdBurnedNum || 0) || stats.burned;
+        const burnedShown = ami ? Math.max(0, burnedAll - stats.clankerBurned) : burnedAll;
+        const burnCount = ami ? Math.max(0, stats.burns - stats.clankerBurns) : stats.burns;
+        const stakedAll =
+          Number(cacheD?.tusdStakedNum || 0) + Number(cacheD?.tusdBalNum || 0) + Number(cacheD?.tusdLiquidStakedNum || 0);
+        const stakedShown = ami ? stats.stakedAmi : stakedAll;
+        const supplyNet = Number(cacheD?.tusdSupplyNum || 0) - Number(cacheD?.tusdBurnedNum || 0);
+        const pct = supplyNet > 0 && stakedShown > 0 ? ((stakedShown / supplyNet) * 100).toFixed(2) + "% of supply" : `${ami ? stats.stakesAmi : stats.stakesAll} stakes`;
+        const managed = Number(cacheD?.totalManagedUsd || 0);
+        const tile = (label: string, value: string, sub: string, key: string) => (
+          <div key={key} className="px-3 py-2.5 min-w-0 border-l first:border-l-0" style={{ borderColor: "#262626" }}>
+            <div className="text-[9px] uppercase tracking-widest mb-0.5" style={{ color: TEXT_3 }}>{label}</div>
+            <div className="text-[15px] font-bold truncate" style={{ color: "#f5f5f5" }}>{value}</div>
+            <div className="text-[9px] mt-0.5 truncate" style={{ color: TEXT_3 }}>{sub}</div>
+          </div>
+        );
+        return (
+          <div className="grid grid-cols-2 md:grid-cols-4 rounded-lg overflow-hidden mb-3" style={{ border: "1px solid #262626" }}>
+            {tile("₸USD burned", fmtAmt(burnedShown) + (px > 0 ? ` · ${fmtUsd(burnedShown * px)}` : ""), `${burnCount} burn${burnCount === 1 ? "" : "s"}`, "b")}
+            {tile("₸USD bought", fmtAmt(stats.bought) + (px > 0 ? ` · ${fmtUsd(stats.bought * px)}` : ""), `${stats.buys} buy${stats.buys === 1 ? "" : "s"}`, "c")}
+            {tile("₸USD staked", fmtAmt(stakedShown) + (px > 0 ? ` · ${fmtUsd(stakedShown * px)}` : ""), pct, "s")}
+            {tile("Managed funds", managed > 0 ? "$" + managed.toLocaleString("en-US", { maximumFractionDigits: 0 }) : "—", cacheAge != null ? `updated ${cacheAge}m ago` : "on-chain treasury", "m")}
+          </div>
+        );
+      })()}
+
       {/* header: legend + live */}
       <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
         <div className="flex flex-wrap gap-3 items-center">
@@ -792,8 +868,21 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
         </div>
       </div>
 
-      {/* chart type + metric toggle + range buttons */}
+      {/* author + chart type + metric toggle + range buttons */}
       <div className="flex gap-1 justify-end mb-1 items-center flex-wrap">
+        <div className="flex rounded-md overflow-hidden mr-1" style={{ border: "1px solid #2a2a2a" }}>
+          {(["all", "ami"] as const).map(a => (
+            <button
+              key={a}
+              type="button"
+              onClick={() => setOpAuthor(a)}
+              className="text-[10px] px-2 py-0.5"
+              style={{ color: opAuthor === a ? "#fff" : TEXT_3, background: opAuthor === a ? "#ffffff14" : "transparent" }}
+            >
+              {a === "all" ? "ALL" : "AMI"}
+            </button>
+          ))}
+        </div>
         <div className="flex rounded-md overflow-hidden mr-1" style={{ border: "1px solid #2a2a2a" }}>
           {(["line", "candles"] as const).map(c => (
             <button

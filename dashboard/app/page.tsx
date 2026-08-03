@@ -580,11 +580,25 @@ type Operation = {
   txHash: string;
   // StrategicSell: ROI vs buy price (shown as sub-line under amount)
   roiPct?: number; // e.g. 250 (green) or -30 (red)
+  // "Clanker" for the giant non-treasury burn; undefined = treasury/AMI
+  author?: string;
 };
 
 // Historical ops — USD values for burns are computed dynamically from live price.
 // StrategicBuy entries are read from Supabase operations table (written by AMI 9000).
 const HISTORICAL_OPS_RAW = [
+  {
+    // Clanker's giant burn — NOT a treasury operation (author: Clanker).
+    // usdValue is the real historical value at burn time.
+    type: "Burn" as const,
+    amount: "900,671,873 \u20B8USD",
+    token: "\u20B8USD",
+    usdValue: "$4,738",
+    date: "2025-10-23",
+    txHash: "0xdf4ed80b30aa65beeda96899ca344a46e207f5f54c193da7447944660c7d21ab",
+    tusdAmount: 0,
+    author: "Clanker",
+  },
   {
     type: "Buyback" as const,
     amount: "22,024,060 \u20B8USD",
@@ -2376,6 +2390,8 @@ const Home: NextPage = () => {
   const [chartView, setChartView] = useState<"all" | "strategic">("all");
   const [chartRange, setChartRange] = useState<"7d" | "30d" | "90d" | "max">("max");
   const [chartRangeOpen, setChartRangeOpen] = useState(false);
+  // Onchain Activity table: "all" shows Clanker's burn too; "treasury" hides it
+  const [opsAuthorFilter, setOpsAuthorFilter] = useState<"all" | "treasury">("all");
   const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
 
   const STRAT_COLORS: Record<string, string> = {
@@ -2442,6 +2458,7 @@ const Home: NextPage = () => {
         date: op.date,
         txHash: op.txHash,
         roiPct: (op as Record<string, unknown>).roiPct as number | undefined,
+        author: (op as Record<string, unknown>).author as string | undefined,
       };
     });
 
@@ -2536,10 +2553,15 @@ const Home: NextPage = () => {
     // Save unfiltered list for token dropdown
     const allOpsUnfiltered = [...allOps];
 
+    // Author filter: "treasury" hides non-treasury ops (Clanker's burn)
+    const authorScoped = opsAuthorFilter === "treasury"
+      ? allOps.filter(op => op.author !== "Clanker")
+      : allOps;
+
     // Apply type filter (empty set = all types)
     let filtered = opsTypeFilter.size === 0
-      ? allOps
-      : allOps.filter(op => opsTypeFilter.has(op.type.toLowerCase()));
+      ? authorScoped
+      : authorScoped.filter(op => opsTypeFilter.has(op.type.toLowerCase()));
 
     // Apply token filter if any tickers are selected
     if (opsTokenFilter.size > 0) {
@@ -2586,7 +2608,7 @@ const Home: NextPage = () => {
     opsSort,
     apiData?.operations,
     tokenToTicker,
-  ]);
+  , opsAuthorFilter]);
 
   // Sort toggle: click once = desc, click again = asc, click again = reset to default (date desc)
   const toggleSort = (col: "date" | "amount" | "usd") => {
@@ -3607,12 +3629,29 @@ const Home: NextPage = () => {
       {/* Operations Table */}
       <div ref={opsSectionRef} className="max-w-4xl w-full px-4 mb-8">
         <div className="flex items-center justify-between" style={{ marginBottom: "-0.5rem" }}>
-          <SectionTitle>Treasury Activity</SectionTitle>
+          <SectionTitle>Onchain Activity</SectionTitle>
+          <div className="flex items-center gap-2" style={{ marginTop: "-1rem" }}>
+            <div className="flex rounded-md overflow-hidden" style={{ border: "1px solid #333" }}>
+              {(["all", "treasury"] as const).map(a => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => setOpsAuthorFilter(a)}
+                  className="text-[10px] px-2 py-1"
+                  style={{
+                    color: opsAuthorFilter === a ? "#fff" : TEXT_DIM,
+                    background: opsAuthorFilter === a ? "#ffffff14" : "transparent",
+                  }}
+                >
+                  {a === "all" ? "All" : "Only Treasury"}
+                </button>
+              ))}
+            </div>
           {connectedAddress &&
             apiData &&
             (connectedAddress.toLowerCase() === apiData.ownerAddr?.toLowerCase() ||
               connectedAddress.toLowerCase() === apiData.operatorAddr?.toLowerCase()) && (
-              <div className="flex gap-2" style={{ marginTop: "-1rem" }}>
+              <div className="flex gap-2">
                 <button
                   onClick={() => window.open("/api/export-operations-csv", "_blank")}
                   className="btn btn-xs sm:btn-sm"
@@ -3637,6 +3676,7 @@ const Home: NextPage = () => {
                 </button>
               </div>
             )}
+          </div>
         </div>
         <div
           className="rounded-xl text-xs sm:text-sm"
@@ -3940,7 +3980,7 @@ const Home: NextPage = () => {
 
       {/* AMI Operations Chart — price line with every AMI op plotted on it */}
       <div className="max-w-4xl w-full px-4 mb-8">
-        <SectionTitle>AMI on the Chart</SectionTitle>
+        <SectionTitle>Activity on the Chart</SectionTitle>
         <AmiOpsChart operations={(apiData?.operations ?? []) as AmiOpRow[]} />
       </div>
 

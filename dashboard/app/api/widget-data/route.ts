@@ -29,6 +29,19 @@ const BLOCK_TIME = 2;
 
 const RPC_URL = process.env.ANKR_RPC_URL || process.env.NEXT_PUBLIC_RPC_FALLBACK_URL || "";
 
+/* staking: escaneo incremental de depósitos de ₸USD */
+const TUSD_TOKEN = "0x3d5e487B21E0569048c4D1A60E98C36e1B09DB07";
+const STAKING_CONTRACT = "0x2a70a42BC0524aBCA9Bff59a51E7aAdB575DC89A";
+const LIQUID_STAKING = "0x2958489b3132f0c9B04d499C21017a8289B021bc";
+const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+const TREASURIES = new Set([
+  "0xaf8b3feba3411430fac757968ac1c9fb25b84107", // v2
+  "0x65d240dd9aa9280dcfb4a5648de8c0668a854e1b", // v2 old
+  "0xefd86aad40cb4340d4ace8b5d8bf7692addc02f8", // v2 oldest
+  "0x3dbf93d110c677a1c063a600cb42940262f3bbd6", // v1
+]);
+const pad32 = (a: string) => "0x" + a.toLowerCase().replace("0x", "").padStart(64, "0");
+
 async function rpc(method: string, params: unknown[]) {
   const res = await fetch(RPC_URL, {
     method: "POST",
@@ -130,6 +143,40 @@ async function refreshCandles(sb: any, wethPriceUsd: number) {
     await sb.from("price_history").upsert(upserts, { onConflict: "day" });
   }
   await sb.from("scan_state").update({ block_number: to, updated_at: new Date().toISOString() }).eq("key", "price_last_block");
+
+  /* stakes nuevos desde el cursor de staking (1 getLogs extra) */
+  try {
+    const { data: sst } = await sb.from("scan_state").select("block_number").eq("key", "stake_last_block").single();
+    const sCursor = Number(sst?.block_number || 0);
+    if (sCursor > 0 && latestBn > sCursor) {
+      const sTo = Math.min(latestBn, sCursor + 1_000_000);
+      const sLogs: { transactionHash: string; logIndex: string; blockNumber: string; data: string; topics: string[] }[] =
+        await rpc("eth_getLogs", [{
+          address: TUSD_TOKEN,
+          topics: [TRANSFER_TOPIC, null, [pad32(STAKING_CONTRACT), pad32(LIQUID_STAKING)]],
+          fromBlock: "0x" + (sCursor + 1).toString(16),
+          toBlock: "0x" + sTo.toString(16),
+        }]);
+      const rows = sLogs
+        .map(l => {
+          const amount = Number(BigInt(l.data)) / 1e18;
+          const toAddr = ("0x" + l.topics[2].slice(26)).toLowerCase();
+          return {
+            tx_hash: l.transactionHash,
+            log_index: parseInt(l.logIndex, 16),
+            ts: new Date(tsOf(parseInt(l.blockNumber, 16)) * 1000).toISOString(),
+            amount,
+            staker: ("0x" + l.topics[1].slice(26)).toLowerCase(),
+            contract: toAddr === LIQUID_STAKING.toLowerCase() ? "liquid" : "staking",
+          };
+        })
+        .filter(r => r.amount > 0);
+      if (rows.length) await sb.from("stake_events").upsert(rows, { onConflict: "tx_hash,log_index" });
+      await sb.from("scan_state").update({ block_number: sTo, updated_at: new Date().toISOString() }).eq("key", "stake_last_block");
+    }
+  } catch (e) {
+    console.error("stake scan:", e);
+  }
 }
 
 /* ── Legacy TreasuryManager v1 ops (pre-date the operations table) ──
@@ -140,6 +187,21 @@ async function refreshCandles(sb: any, wethPriceUsd: number) {
    export. They are appended here so the CHARTS show them, with the v1
    author label. token_price_usd is filled from price_history at runtime. */
 const LEGACY_V1_OPS = [
+  {
+    /* Burn gigante de Clanker (no lo hizo el treasury): 900.76M ₸USD a dead
+       vía Gelato desde el LegacyFeeSource. Autor: Clanker. */
+    type: "Spend",
+    op_type: "Burn",
+    buy_amount: null as number | null,
+    buy_currency: null as string | null,
+    sell_amount: 900671873.71,
+    sell_currency: "TUSD2",
+    exchange: "Clanker",
+    weth_price_usd: null as number | null,
+    token_price_usd: 0.00000526053, // $4,738.01 reales en el momento del burn
+    tx_hash: "0xdf4ed80b30aa65beeda96899ca344a46e207f5f54c193da7447944660c7d21ab",
+    date_utc: "2025-10-23T17:17:13Z",
+  },
   {
     type: "Trade",
     op_type: "Buyback",
@@ -223,6 +285,9 @@ export async function GET() {
         engineBurned: d.engineBurned ?? null,
         tusdPriceUsd: d.tusdPriceUsd ?? null,
         tusdSupplyNum: d.tusdSupplyNum ?? null,
+        tusdStakedNum: d.tusdStakedNum ?? null,
+        tusdLiquidStakedNum: d.tusdLiquidStakedNum ?? null,
+        tusdBalNum: d.tusdBalNum ?? null,
       },
       updated_at: cacheErr ? null : (cacheRow?.updated_at ?? null),
     };
@@ -249,7 +314,36 @@ export async function GET() {
       ...o,
       token_price_usd: o.token_price_usd ?? closeByDay.get(o.date_utc.slice(0, 10)) ?? null,
     }));
-    const allOps = [...legacy, ...(operations || [])].sort(
+
+    /* stakes on-chain (todos los stakers) → ops sintéticas para el gráfico.
+       Los stakes que AMI ya registró en operations se saltan (dedup por tx). */
+    const { data: stakeEvents } = await sb
+      .from("stake_events")
+      .select("tx_hash,log_index,ts,amount,staker,contract")
+      .order("ts", { ascending: true })
+      .limit(3000);
+    const stakes = (stakeEvents || [])
+      .filter(s => !dbTx.has(s.tx_hash))
+      .map(s => ({
+        type: "Stake",
+        op_type: "Stake",
+        buy_amount: null as number | null,
+        buy_currency: null as string | null,
+        sell_amount: Number(s.amount),
+        sell_currency: "TUSD2",
+        exchange:
+          s.contract === "liquid"
+            ? "Liquid staking"
+            : TREASURIES.has((s.staker || "").toLowerCase())
+              ? "Treasury Manager"
+              : "Staking contract",
+        weth_price_usd: null as number | null,
+        token_price_usd: closeByDay.get(String(s.ts).slice(0, 10)) ?? null,
+        tx_hash: s.tx_hash,
+        date_utc: new Date(s.ts).toISOString(),
+      }));
+
+    const allOps = [...legacy, ...stakes, ...(operations || [])].sort(
       (a, b) => Date.parse(a.date_utc) - Date.parse(b.date_utc),
     );
 
