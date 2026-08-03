@@ -735,7 +735,9 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
       return;
     }
 
-    /* hover */
+    /* hover (en táctil el tooltip se maneja con taps) */
+    if (e.pointerType === "touch") return;
+    if (pinnedTx !== null) setPinnedTx(null);
     const zn = zoneOf(sx, sy);
     if (zn !== "plot") {
       setHover(null);
@@ -785,21 +787,54 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
   };
 
   const lastTapRef = useRef({ t: 0, x: 0, y: 0 });
+  const [pinnedTx, setPinnedTx] = useState<string | null>(null);
   const onPointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
     /* double-tap en táctil = reset zoom (dblclick no dispara en móvil) */
     const drag = dragRef.current as { mode?: string; moved?: boolean } | null;
     const wasPinch = drag && (drag.mode === "pinchX" || drag.mode === "pinchY");
     const wasDrag = drag && drag.moved;
     if (e.pointerType === "touch" && !wasPinch && !wasDrag) {
-      const { sx, sy } = coords(e.clientX, e.clientY);
+      const { sx, sy, scale } = coords(e.clientX, e.clientY);
       const now = Date.now();
       const lt = lastTapRef.current;
       if (now - lt.t < 350 && Math.hypot(sx - lt.x, sy - lt.y) < 40) {
         lastTapRef.current = { t: 0, x: 0, y: 0 };
+        setPinnedTx(null);
+        setHover(null);
         setView(null);
         setYman(null);
       } else {
         lastTapRef.current = { t: now, x: sx, y: sy };
+        /* tap en un marcador → tooltip fijado; tap fuera → cerrar */
+        suppressClickRef.current = true;
+        let best: { m: Marker; x: number; y: number; r: number } | null = null;
+        let bestD = Infinity;
+        if (geom) {
+          for (const h of geom.placed) {
+            const d = Math.hypot(h.x - sx, h.y - sy);
+            if (d < Math.max(26, h.r + 8) && d < bestD) {
+              bestD = d;
+              best = h;
+            }
+          }
+        }
+        if (best) {
+          const st = OP_STYLE[best.m.type];
+          setPinnedTx(best.m.tx || null);
+          setHover({
+            x: best.x / scale,
+            y: best.y / scale,
+            tx: best.m.tx || undefined,
+            lines: [
+              { cls: "date", text: `${fmtDate(best.m.t, true)} · ${st.label.toUpperCase()}` },
+              { cls: "main", text: best.m.main },
+              { cls: "sub", text: best.m.sub + (best.m.tx ? "  ·  view tx ↗" : "") },
+            ],
+          });
+        } else {
+          setPinnedTx(null);
+          setHover(null);
+        }
       }
     }
     delete pointersRef.current[e.pointerId];
@@ -831,8 +866,18 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
         const supplyNet = Number(cacheD?.tusdSupplyNum || 0) - Number(cacheD?.tusdBurnedNum || 0);
         const pct = supplyNet > 0 && stakedShown > 0 ? ((stakedShown / supplyNet) * 100).toFixed(2) + "% of supply" : `${ami ? stats.stakesAmi : stats.stakesAll} stakes`;
         const managed = Number(cacheD?.totalManagedUsd || 0);
-        const tile = (label: string, value: string, sub: string, key: string) => (
-          <div key={key} className="px-3 py-2.5 min-w-0 border-l first:border-l-0" style={{ borderColor: "#262626" }}>
+        const tile = (label: string, value: string, sub: string, key: string, idx: number) => (
+          <div
+            key={key}
+            className={
+              "px-3 py-2.5 min-w-0 " +
+              (idx % 2 === 0 ? "border-l-0 " : "border-l ") +
+              (idx === 1 || idx === 3 ? "md:border-l " : "") +
+              (idx === 2 ? "md:border-l " : "") +
+              (idx >= 2 ? "border-t md:border-t-0" : "")
+            }
+            style={{ borderColor: "#262626" }}
+          >
             <div className="text-[9px] uppercase tracking-widest mb-0.5" style={{ color: TEXT_3 }}>{label}</div>
             <div className="text-[15px] font-bold truncate" style={{ color: "#f5f5f5" }}>{value}</div>
             <div className="text-[9px] mt-0.5 truncate" style={{ color: TEXT_3 }}>{sub}</div>
@@ -840,10 +885,10 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
         );
         return (
           <div className="grid grid-cols-2 md:grid-cols-4 rounded-lg overflow-hidden mb-3" style={{ border: "1px solid #262626" }}>
-            {tile("₸USD burned", fmtAmt(burnedShown) + (px > 0 ? ` · ${fmtUsd(burnedShown * px)}` : ""), `${burnCount} burn${burnCount === 1 ? "" : "s"}`, "b")}
-            {tile("₸USD bought", fmtAmt(stats.bought) + (px > 0 ? ` · ${fmtUsd(stats.bought * px)}` : ""), `${stats.buys} buy${stats.buys === 1 ? "" : "s"}`, "c")}
-            {tile("₸USD staked", fmtAmt(stakedShown) + (px > 0 ? ` · ${fmtUsd(stakedShown * px)}` : ""), pct, "s")}
-            {tile("Managed funds", managed > 0 ? "$" + managed.toLocaleString("en-US", { maximumFractionDigits: 0 }) : "—", cacheAge != null ? `updated ${cacheAge}m ago` : "on-chain treasury", "m")}
+            {tile("₸USD burned", fmtAmt(burnedShown) + (px > 0 ? ` · ${fmtUsd(burnedShown * px)}` : ""), `${burnCount} burn${burnCount === 1 ? "" : "s"}`, "b", 0)}
+            {tile("₸USD bought", fmtAmt(stats.bought) + (px > 0 ? ` · ${fmtUsd(stats.bought * px)}` : ""), `${stats.buys} buy${stats.buys === 1 ? "" : "s"}`, "c", 1)}
+            {tile("₸USD staked", fmtAmt(stakedShown) + (px > 0 ? ` · ${fmtUsd(stakedShown * px)}` : ""), pct, "s", 2)}
+            {tile("Managed funds", managed > 0 ? "$" + managed.toLocaleString("en-US", { maximumFractionDigits: 0 }) : "—", cacheAge != null ? `updated ${cacheAge}m ago` : "on-chain treasury", "m", 3)}
           </div>
         );
       })()}
@@ -883,13 +928,22 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
             Avg buyback
           </span>
         </div>
-        <div className="flex items-center gap-2 text-[11px] whitespace-nowrap" style={{ color: TEXT_2 }}>
+        <div className="hidden md:flex items-center gap-2 text-[11px] whitespace-nowrap" style={{ color: TEXT_2 }}>
           <span
             className="inline-block w-[7px] h-[7px] rounded-full animate-pulse"
             style={{ background: ACCENT, boxShadow: `0 0 6px ${ACCENT}` }}
           />
           {live && metric === "price" ? `LIVE ${fmtPrice(live)}` : live ? `LIVE MCAP ${fmtUsd(live * (F(Date.now()) || 1))}` : "LIVE"}
         </div>
+      </div>
+
+      {/* LIVE en móvil: a la derecha, encima de los switchers */}
+      <div className="flex md:hidden justify-end items-center gap-1.5 text-[10px] mb-1" style={{ color: TEXT_2 }}>
+        <span
+          className="inline-block w-[6px] h-[6px] rounded-full animate-pulse"
+          style={{ background: ACCENT, boxShadow: `0 0 6px ${ACCENT}` }}
+        />
+        {live && metric === "price" ? `LIVE ${fmtPrice(live)}` : live ? `LIVE MCAP ${fmtUsd(live * (F(Date.now()) || 1))}` : "LIVE"}
       </div>
 
       {/* author + chart type + metric toggle + range buttons */}
@@ -1011,7 +1065,9 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
-          onPointerLeave={() => setHover(null)}
+          onPointerLeave={() => {
+            if (!pinnedTx) setHover(null);
+          }}
           onDoubleClick={() => {
             setView(null);
             setYman(null);
@@ -1161,7 +1217,10 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
 
         {hover && (
           <div
-            className="absolute z-10 pointer-events-none rounded-lg px-2.5 py-2 text-[11px] leading-relaxed whitespace-nowrap"
+            onClick={() => {
+              if (pinnedTx) window.open(`https://basescan.org/tx/${encodeURIComponent(pinnedTx)}`, "_blank", "noopener");
+            }}
+            className={`absolute z-10 ${pinnedTx ? "pointer-events-auto cursor-pointer" : "pointer-events-none"} rounded-lg px-2.5 py-2 text-[11px] leading-relaxed whitespace-nowrap`}
             style={{
               background: "#1b1b1b",
               border: "1px solid #333",
