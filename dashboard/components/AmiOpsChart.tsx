@@ -48,7 +48,6 @@ const LEGEND: { key: string; types: string[] }[] = [
   { key: "Burn", types: ["Burn", "BurnEngine"] },
   { key: "FeeClaim", types: ["FeeClaim"] },
   { key: "Rebalance", types: ["Rebalance"] },
-  { key: "Stake", types: ["Stake"] },
 ];
 
 const RANGES = [
@@ -248,6 +247,7 @@ function processOps(rows: AmiOpRow[]): {
         stats.stakedAmi += staked;
         stats.stakesAmi++;
       }
+      continue; // stakes: solo stats, sin marcador en el gráfico
     } else if (t === "FeeClaim") {
       const cur = op.buy_currency || "";
       const amt = op.buy_amount || 0;
@@ -536,10 +536,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
 
     const visible = markers.filter(m => {
       if (m.t < t0 || m.t > t1) return false;
-      if (opAuthor === "ami") {
-        if (m.ex === "Clanker") return false;
-        if (m.type === "Stake" && (m.ex === "Liquid staking" || m.ex === "Staking contract")) return false;
-      }
+      if (opAuthor === "ami" && m.ex === "Clanker") return false;
       const lg = LEGEND.find(l => l.types.indexOf(m.type) !== -1);
       return !(lg && hidden.has(lg.key));
     });
