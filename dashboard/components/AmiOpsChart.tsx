@@ -897,27 +897,27 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
 
       {/* author + chart type + metric toggle + range buttons */}
       <div className="flex gap-1 justify-end mb-1 items-center flex-wrap">
-        <div className="flex rounded-md overflow-hidden mr-1" style={{ border: "1px solid #2a2a2a" }}>
+        <div className="flex items-stretch h-[22px] rounded-md overflow-hidden mr-1" style={{ border: "1px solid #2a2a2a" }}>
           {(["all", "ami"] as const).map(a => (
             <button
               key={a}
               type="button"
               onClick={() => setOpAuthor(a)}
-              className="text-[10px] px-2 py-0.5"
+              className="text-[10px] px-2 flex items-center"
               style={{ color: opAuthor === a ? "#fff" : TEXT_3, background: opAuthor === a ? "#ffffff14" : "transparent" }}
             >
               {a === "all" ? "ALL" : "AMI"}
             </button>
           ))}
         </div>
-        <div className="flex rounded-md overflow-hidden mr-1" style={{ border: "1px solid #2a2a2a" }}>
+        <div className="flex items-stretch h-[22px] rounded-md overflow-hidden mr-1" style={{ border: "1px solid #2a2a2a" }}>
           {(["line", "candles"] as const).map(c => (
             <button
               key={c}
               type="button"
               aria-label={c === "line" ? "Line chart" : "Candlestick chart"}
               onClick={() => setCtype(c)}
-              className="px-2 py-1 flex items-center"
+              className="px-2 flex items-center"
               style={{ color: ctype === c ? "#fff" : TEXT_3, background: ctype === c ? "#ffffff14" : "transparent" }}
             >
               {c === "line" ? (
@@ -944,7 +944,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
             </button>
           ))}
         </div>
-        <div className="flex rounded-md overflow-hidden mr-2" style={{ border: "1px solid #2a2a2a" }}>
+        <div className="flex items-stretch h-[22px] rounded-md overflow-hidden mr-2" style={{ border: "1px solid #2a2a2a" }}>
           {(["price", "mcap"] as const).map(m => (
             <button
               key={m}
@@ -953,7 +953,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
                 setMetric(m);
                 setYman(null);
               }}
-              className="text-[10px] px-2 py-0.5"
+              className="text-[10px] px-2 flex items-center"
               style={{ color: metric === m ? "#fff" : TEXT_3, background: metric === m ? "#ffffff14" : "transparent" }}
             >
               {m === "price" ? "PRICE" : "MCAP"}
@@ -967,7 +967,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
               e.stopPropagation();
               setRangeOpen(o => !o);
             }}
-            className="text-[10px] px-2 py-1 rounded-md flex items-center gap-1"
+            className="text-[10px] px-2 h-[22px] rounded-md flex items-center gap-1"
             style={{ color: "#fff", background: "#ffffff10", border: "1px solid #2a2a2a" }}
           >
             {range}
