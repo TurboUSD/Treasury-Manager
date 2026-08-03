@@ -130,7 +130,11 @@ function niceTicks(min: number, max: number, n: number): number[] {
   return ticks;
 }
 
-function processOps(rows: AmiOpRow[]): { markers: Marker[]; avgCost: number | null } {
+function processOps(rows: AmiOpRow[]): {
+  markers: Marker[];
+  avgCost: number | null;
+  burnEvents: { t: number; amt: number }[];
+} {
   const groups: Record<string, AmiOpRow[]> = {};
   const order: string[] = [];
   for (const op of rows) {
@@ -147,6 +151,7 @@ function processOps(rows: AmiOpRow[]): { markers: Marker[]; avgCost: number | nu
   }
 
   const markers: Marker[] = [];
+  const burnEvents: { t: number; amt: number }[] = [];
   let bbUsd = 0,
     bbTusd = 0;
   for (const key of order) {
@@ -182,6 +187,7 @@ function processOps(rows: AmiOpRow[]): { markers: Marker[]; avgCost: number | nu
       usd = burned * (br.token_price_usd || 0);
       main = `${fmtAmt(burned)} ₸USD burned 🔥`;
       sub = (t === "BurnEngine" ? "BurnEngine · " : "Treasury · ") + fmtUsd(usd);
+      burnEvents.push({ t: ts, amt: burned });
     } else if (t === "Stake") {
       const sr = rws.find(r => r.sell_currency === "TUSD2") || op;
       const staked = sr.sell_amount || 0;
@@ -220,7 +226,8 @@ function processOps(rows: AmiOpRow[]): { markers: Marker[]; avgCost: number | nu
     markers.push({ t: ts, type: t, usd, main, sub, price: opPrice, tx: op.tx_hash || "" });
   }
 
-  return { markers, avgCost: bbTusd > 0 ? bbUsd / bbTusd : null };
+  burnEvents.sort((a, b) => a.t - b.t);
+  return { markers, avgCost: bbTusd > 0 ? bbUsd / bbTusd : null, burnEvents };
 }
 
 /* ── marker shape as JSX ── */
@@ -260,8 +267,11 @@ function MarkerShape({ shape, x, y, r, color }: { shape: Shape; x: number; y: nu
 export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(800);
-  const [range, setRange] = useState("MAX");
+  const [range, setRange] = useState("90D");
+  const [metric, setMetric] = useState<"price" | "mcap">("price");
+  const [supplyNow, setSupplyNow] = useState<number | null>(null);
   const [prices, setPrices] = useState<PricePoint[]>([]);
+  const [candles, setCandles] = useState<PricePoint[]>([]); // velas diarias propias (price_history)
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
@@ -282,9 +292,38 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
     return () => ro.disconnect();
   }, []);
 
-  /* price history */
+  /* velas diarias propias (histórico completo on-chain, tabla price_history) */
   useEffect(() => {
     let cancelled = false;
+    fetch("/api/widget-data", { headers: { accept: "application/json" } })
+      .then(res => (res.ok ? res.json() : null))
+      .then(j => {
+        if (cancelled || !j) return;
+        if (j.candles) {
+          setCandles(
+            (j.candles as { day: string; close: number }[])
+              .map(c => ({ t: Date.parse(c.day), p: Number(c.close) }))
+              .filter(x => isFinite(x.p) && x.p > 0),
+          );
+        }
+        const s = Number(j.cache?.data?.tusdSupplyNum || 0);
+        if (s > 0) setSupplyNow(s);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /* price history — 90D/MAX desde velas propias; 7D/30D desde GeckoTerminal (horario) */
+  useEffect(() => {
+    let cancelled = false;
+    if ((range === "MAX" || range === "90D") && candles.length) {
+      setPrices(range === "90D" ? candles.slice(-90) : candles);
+      setFailed(false);
+      setLoading(false);
+      return;
+    }
     const r = RANGES.find(x => x.key === range) || RANGES[3];
     setLoading(true);
     fetch(
@@ -320,23 +359,49 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
     };
   }, [range]);
 
-  const { markers, avgCost } = useMemo(() => processOps(operations || []), [operations]);
+  const { markers, avgCost, burnEvents } = useMemo(() => processOps(operations || []), [operations]);
+
+  /* supply histórico: supply(t) = supplyNow + quemado después de t */
+  const supplyAt = useMemo(() => {
+    const ts = burnEvents.map(e => e.t);
+    const suffix = new Array<number>(burnEvents.length + 1);
+    suffix[burnEvents.length] = 0;
+    for (let i = burnEvents.length - 1; i >= 0; i--) suffix[i] = suffix[i + 1] + burnEvents[i].amt;
+    return (t: number): number | null => {
+      if (!supplyNow) return null;
+      let lo = 0,
+        hi = ts.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (ts[mid] <= t) lo = mid + 1;
+        else hi = mid;
+      }
+      return supplyNow + suffix[lo];
+    };
+  }, [burnEvents, supplyNow]);
+
+  const F = useMemo(() => (metric === "mcap" ? (t: number) => supplyAt(t) || 1 : () => 1), [metric, supplyAt]);
+  const fmtVal = metric === "mcap" ? fmtUsd : fmtPrice;
+  const viewPrices = useMemo(
+    () => (metric === "mcap" ? prices.map(x => ({ t: x.t, p: x.p * F(x.t) })) : prices),
+    [prices, metric, F],
+  );
 
   /* geometry */
   const H = Math.max(300, Math.min(420, Math.round(width * 0.42)));
   const PAD = { l: 8, r: 58, t: 18, b: 26 };
 
   const geom = useMemo(() => {
-    if (!prices.length) return null;
-    const t0 = prices[0].t,
-      t1 = prices[prices.length - 1].t;
+    if (!viewPrices.length) return null;
+    const t0 = viewPrices[0].t,
+      t1 = viewPrices[viewPrices.length - 1].t;
     let pmin = Infinity,
       pmax = -Infinity;
-    for (const x of prices) {
+    for (const x of viewPrices) {
       if (x.p < pmin) pmin = x.p;
       if (x.p > pmax) pmax = x.p;
     }
-    if (avgCost) {
+    if (metric === "price" && avgCost) {
       pmin = Math.min(pmin, avgCost);
       pmax = Math.max(pmax, avgCost);
     }
@@ -355,8 +420,8 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
     for (const m of visible) if (m.usd > maxUsd) maxUsd = m.usd;
     const placed = visible
       .map(m => {
-        let yv = interp(prices, m.t);
-        if (m.price && m.type === "Buyback") yv = m.price;
+        let yv = interp(viewPrices, m.t);
+        if (m.price && m.type === "Buyback") yv = m.price * F(m.t);
         if (yv == null) return null;
         const y = Math.max(PAD.t + 4, Math.min(H - PAD.b - 4, Y(yv)));
         let r = maxUsd > 0 ? 6 + 14 * Math.sqrt((m.usd || 0) / maxUsd) : 8;
@@ -366,14 +431,14 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
       .filter(Boolean) as { m: Marker; x: number; y: number; r: number }[];
 
     let dLine = "";
-    prices.forEach((pt, i) => {
+    viewPrices.forEach((pt, i) => {
       dLine += (i ? " L " : "M ") + X(pt.t).toFixed(1) + " " + Y(pt.p).toFixed(1);
     });
     const yBase = (H - PAD.b).toFixed(1);
     const dArea = `${dLine} L ${X(t1).toFixed(1)} ${yBase} L ${X(t0).toFixed(1)} ${yBase} Z`;
 
     return { t0, t1, pmin, pmax, X, Y, placed, dLine, dArea, ticks: niceTicks(pmin, pmax, 4) };
-  }, [prices, markers, hidden, width, H, avgCost, PAD.l, PAD.r, PAD.t, PAD.b]);
+  }, [viewPrices, metric, F, markers, hidden, width, H, avgCost, PAD.l, PAD.r, PAD.t, PAD.b]);
 
   /* pointer */
   const onMove = (evt: React.PointerEvent<SVGSVGElement>) => {
@@ -411,7 +476,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
       return;
     }
     const t = geom.t0 + ((sx - PAD.l) / (width - PAD.l - PAD.r)) * (geom.t1 - geom.t0);
-    const p = interp(prices, t);
+    const p = interp(viewPrices, t);
     if (p == null) {
       setHover(null);
       return;
@@ -421,7 +486,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
       y: geom.Y(p) / scale,
       lines: [
         { cls: "date", text: fmtDate(t, true) },
-        { cls: "main", text: fmtPrice(p) },
+        { cls: "main", text: fmtVal(p) },
       ],
     });
   };
@@ -478,8 +543,21 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
         </div>
       </div>
 
-      {/* range buttons */}
-      <div className="flex gap-1 justify-end mb-1">
+      {/* metric toggle + range buttons */}
+      <div className="flex gap-1 justify-end mb-1 items-center flex-wrap">
+        <div className="flex rounded-md overflow-hidden mr-2" style={{ border: "1px solid #2a2a2a" }}>
+          {(["price", "mcap"] as const).map(m => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMetric(m)}
+              className="text-[10px] px-2 py-0.5"
+              style={{ color: metric === m ? "#fff" : TEXT_3, background: metric === m ? "#ffffff14" : "transparent" }}
+            >
+              {m === "price" ? "PRICE" : "MCAP"}
+            </button>
+          ))}
+        </div>
         {RANGES.map(r => (
           <button
             key={r.key}
@@ -530,7 +608,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
                 <g key={v}>
                   <line x1={PAD.l} y1={geom.Y(v)} x2={width - PAD.r} y2={geom.Y(v)} stroke={GRID} strokeWidth={1} />
                   <text x={width - PAD.r + 6} y={geom.Y(v) + 3} fontSize={10} fill={TEXT_3}>
-                    {fmtPrice(v)}
+                    {fmtVal(v)}
                   </text>
                 </g>
               ))}
@@ -557,7 +635,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
               </defs>
               <path d={geom.dArea} fill="url(#ami-ops-grad)" />
               <path d={geom.dLine} fill="none" stroke={LINE} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-              {avgCost && avgCost > geom.pmin && avgCost < geom.pmax && (
+              {metric === "price" && avgCost && avgCost > geom.pmin && avgCost < geom.pmax && (
                 <g>
                   <line
                     x1={PAD.l}
