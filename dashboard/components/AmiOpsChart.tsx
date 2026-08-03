@@ -1,9 +1,19 @@
 "use client";
 
 /**
- * AMI Operations Chart — ₸USD price line with every AMI on-chain operation
- * plotted as a marker (whitewolf.fun-style). Price history from GeckoTerminal
- * (public API), operations from the treasury API (Supabase `operations` table).
+ * AMI Operations Chart — ₸USD price/mcap chart with every AMI on-chain
+ * operation plotted as a marker (whitewolf.fun-style).
+ *
+ * Data:
+ *  - 90D (default) & MAX: our own daily OHLC candles (price_history via /api/widget-data)
+ *  - 7D / 30D: GeckoTerminal hourly candles
+ *  - Operations: passed in via props (already fetched by the page)
+ *
+ * Interaction (TradingView-style):
+ *  - Mouse wheel over plot → zoom X (anchored at cursor)
+ *  - Mouse wheel over the Y-axis gutter → zoom Y
+ *  - Drag on the X/Y axis → zoom that axis; drag on plot → pan
+ *  - Pinch on mobile (per axis); double click/tap → reset
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -17,6 +27,8 @@ const LINE = "#d9d9d9";
 const ACCENT = "#43e397";
 const TEXT_2 = "#a8a8a8";
 const TEXT_3 = "#6f6f6f";
+const GREEN_C = "#22a04a";
+const RED_C = "#ef4444";
 
 type Shape = "circle" | "ring" | "diamond" | "square" | "triangle";
 
@@ -69,7 +81,7 @@ type Marker = {
   tx: string;
 };
 
-type PricePoint = { t: number; p: number };
+type Pt = { t: number; o: number; h: number; l: number; c: number; p: number };
 
 /* ── formatting ── */
 function fmtPrice(p: number): string {
@@ -83,6 +95,7 @@ function fmtPrice(p: number): string {
 }
 function fmtUsd(v: number): string {
   if (!isFinite(v) || v <= 0) return "—";
+  if (v >= 1e9) return "$" + (v / 1e9).toFixed(2) + "B";
   if (v >= 1e6) return "$" + (v / 1e6).toFixed(2) + "M";
   if (v >= 1e3) return "$" + (v / 1e3).toFixed(1) + "K";
   return "$" + v.toFixed(v < 10 ? 2 : 0);
@@ -105,7 +118,7 @@ function fmtDate(t: number, withTime = false): string {
 }
 
 /* ── data helpers ── */
-function interp(prices: PricePoint[], t: number): number | null {
+function interp(prices: Pt[], t: number): number | null {
   if (!prices.length) return null;
   if (t <= prices[0].t) return prices[0].p;
   if (t >= prices[prices.length - 1].t) return prices[prices.length - 1].p;
@@ -230,7 +243,7 @@ function processOps(rows: AmiOpRow[]): {
   return { markers, avgCost: bbTusd > 0 ? bbUsd / bbTusd : null, burnEvents };
 }
 
-/* ── marker shape as JSX ── */
+/* ── marker shape ── */
 function MarkerShape({ shape, x, y, r, color }: { shape: Shape; x: number; y: number; r: number; color: string }) {
   if (shape === "circle") return <circle cx={x} cy={y} r={r} fill={color} stroke={SURFACE} strokeWidth={2} />;
   if (shape === "ring")
@@ -266,21 +279,29 @@ function MarkerShape({ shape, x, y, r, color }: { shape: Shape; x: number; y: nu
 /* ── component ── */
 export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
   const wrapRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const [width, setWidth] = useState(800);
   const [range, setRange] = useState("90D");
   const [metric, setMetric] = useState<"price" | "mcap">("price");
+  const [ctype, setCtype] = useState<"line" | "candles">("line");
   const [supplyNow, setSupplyNow] = useState<number | null>(null);
-  const [prices, setPrices] = useState<PricePoint[]>([]);
-  const [candles, setCandles] = useState<PricePoint[]>([]); // velas diarias propias (price_history)
+  const [burnedNow, setBurnedNow] = useState<number>(0);
+  const [prices, setPrices] = useState<Pt[]>([]);
+  const [candles, setCandles] = useState<Pt[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [view, setView] = useState<{ x0: number; x1: number } | null>(null);
+  const [yman, setYman] = useState<{ min: number; max: number } | null>(null);
   const [hover, setHover] = useState<{
     x: number;
     y: number;
     lines: { cls: string; text: string }[];
     tx?: string;
   } | null>(null);
+  const dragRef = useRef<Record<string, unknown> | null>(null);
+  const pointersRef = useRef<Record<number, { sx: number; sy: number }>>({});
+  const suppressClickRef = useRef(false);
 
   /* container resize */
   useEffect(() => {
@@ -292,7 +313,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
     return () => ro.disconnect();
   }, []);
 
-  /* velas diarias propias (histórico completo on-chain, tabla price_history) */
+  /* own daily candles + supply */
   useEffect(() => {
     let cancelled = false;
     fetch("/api/widget-data", { headers: { accept: "application/json" } })
@@ -301,13 +322,22 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
         if (cancelled || !j) return;
         if (j.candles) {
           setCandles(
-            (j.candles as { day: string; close: number }[])
-              .map(c => ({ t: Date.parse(c.day), p: Number(c.close) }))
+            (j.candles as { day: string; open: number; high: number; low: number; close: number }[])
+              .map(c => ({
+                t: Date.parse(c.day),
+                o: Number(c.open),
+                h: Number(c.high),
+                l: Number(c.low),
+                c: Number(c.close),
+                p: Number(c.close),
+              }))
               .filter(x => isFinite(x.p) && x.p > 0),
           );
         }
         const s = Number(j.cache?.data?.tusdSupplyNum || 0);
         if (s > 0) setSupplyNow(s);
+        const bn = Number(j.cache?.data?.tusdBurnedNum || 0);
+        if (bn > 0) setBurnedNow(bn);
       })
       .catch(() => undefined);
     return () => {
@@ -315,9 +345,11 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
     };
   }, []);
 
-  /* price history — 90D/MAX desde velas propias; 7D/30D desde GeckoTerminal (horario) */
+  /* price series — 90D/MAX from own candles; 7D/30D from GeckoTerminal */
   useEffect(() => {
     let cancelled = false;
+    setView(null);
+    setYman(null);
     if ((range === "MAX" || range === "90D") && candles.length) {
       setPrices(range === "90D" ? candles.slice(-90) : candles);
       setFailed(false);
@@ -336,8 +368,8 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
       })
       .then(j => {
         if (cancelled) return;
-        let pts: PricePoint[] = ((j?.data?.attributes?.ohlcv_list as number[][]) || [])
-          .map(c => ({ t: c[0] * 1000, p: c[4] }))
+        let pts: Pt[] = ((j?.data?.attributes?.ohlcv_list as number[][]) || [])
+          .map(c => ({ t: c[0] * 1000, o: c[1], h: c[2], l: c[3], c: c[4], p: c[4] }))
           .filter(x => isFinite(x.p) && x.p > 0)
           .sort((a, b) => a.t - b.t);
         if (r.days) {
@@ -357,11 +389,11 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
     return () => {
       cancelled = true;
     };
-  }, [range]);
+  }, [range, candles]);
 
   const { markers, avgCost, burnEvents } = useMemo(() => processOps(operations || []), [operations]);
 
-  /* supply histórico: supply(t) = supplyNow + quemado después de t */
+  /* supply(t) = supplyNow + burned after t */
   const supplyAt = useMemo(() => {
     const ts = burnEvents.map(e => e.t);
     const suffix = new Array<number>(burnEvents.length + 1);
@@ -369,6 +401,9 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
     for (let i = burnEvents.length - 1; i >= 0; i--) suffix[i] = suffix[i + 1] + burnEvents[i].amt;
     return (t: number): number | null => {
       if (!supplyNow) return null;
+      /* supplyNow es el total BRUTO (burns a dead no reducen totalSupply):
+         circulante hoy = bruto − quemado total; supply(t) = eso + quemado después de t */
+      const baseNet = supplyNow - burnedNow;
       let lo = 0,
         hi = ts.length;
       while (lo < hi) {
@@ -376,15 +411,21 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
         if (ts[mid] <= t) lo = mid + 1;
         else hi = mid;
       }
-      return supplyNow + suffix[lo];
+      return baseNet + suffix[lo];
     };
-  }, [burnEvents, supplyNow]);
+  }, [burnEvents, supplyNow, burnedNow]);
 
   const F = useMemo(() => (metric === "mcap" ? (t: number) => supplyAt(t) || 1 : () => 1), [metric, supplyAt]);
   const fmtVal = metric === "mcap" ? fmtUsd : fmtPrice;
-  const viewPrices = useMemo(
-    () => (metric === "mcap" ? prices.map(x => ({ t: x.t, p: x.p * F(x.t) })) : prices),
-    [prices, metric, F],
+
+  /* full transformed series */
+  const viewAll = useMemo<Pt[]>(
+    () =>
+      prices.map(x => {
+        const f = F(x.t) || 1;
+        return { t: x.t, o: x.o * f, h: x.h * f, l: x.l * f, c: x.c * f, p: x.p * f };
+      }),
+    [prices, F],
   );
 
   /* geometry */
@@ -392,22 +433,43 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
   const PAD = { l: 8, r: 58, t: 18, b: 26 };
 
   const geom = useMemo(() => {
-    if (!viewPrices.length) return null;
-    const t0 = viewPrices[0].t,
-      t1 = viewPrices[viewPrices.length - 1].t;
-    let pmin = Infinity,
+    if (!viewAll.length) return null;
+    const f0 = viewAll[0].t,
+      f1 = viewAll[viewAll.length - 1].t;
+    const t0 = view ? view.x0 : f0;
+    const t1 = view ? view.x1 : f1;
+
+    const pts: Pt[] = [];
+    for (let i = 0; i < viewAll.length; i++) {
+      const tt = viewAll[i].t;
+      if (tt >= t0 && tt <= t1) pts.push(viewAll[i]);
+      else if (tt < t0 && i + 1 < viewAll.length && viewAll[i + 1].t >= t0) pts.push(viewAll[i]);
+      else if (tt > t1 && i > 0 && viewAll[i - 1].t <= t1) pts.push(viewAll[i]);
+    }
+    const usable = pts.length ? pts : viewAll.slice(-2);
+
+    let pmin: number, pmax: number;
+    if (yman) {
+      pmin = yman.min;
+      pmax = yman.max;
+    } else {
+      pmin = Infinity;
       pmax = -Infinity;
-    for (const x of viewPrices) {
-      if (x.p < pmin) pmin = x.p;
-      if (x.p > pmax) pmax = x.p;
+      for (const x of usable) {
+        const lo = ctype === "candles" ? x.l : x.p;
+        const hi = ctype === "candles" ? x.h : x.p;
+        if (lo < pmin) pmin = lo;
+        if (hi > pmax) pmax = hi;
+      }
+      if (metric === "price" && avgCost && !view) {
+        pmin = Math.min(pmin, avgCost);
+        pmax = Math.max(pmax, avgCost);
+      }
+      const padY = (pmax - pmin) * 0.12 || pmax * 0.1 || 1;
+      pmin = Math.max(0, pmin - padY);
+      pmax += padY;
     }
-    if (metric === "price" && avgCost) {
-      pmin = Math.min(pmin, avgCost);
-      pmax = Math.max(pmax, avgCost);
-    }
-    const padY = (pmax - pmin) * 0.12 || pmax * 0.1 || 1;
-    pmin = Math.max(0, pmin - padY);
-    pmax += padY;
+
     const X = (t: number) => PAD.l + ((t - t0) / (t1 - t0 || 1)) * (width - PAD.l - PAD.r);
     const Y = (p: number) => PAD.t + (1 - (p - pmin) / (pmax - pmin || 1)) * (H - PAD.t - PAD.b);
 
@@ -420,7 +482,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
     for (const m of visible) if (m.usd > maxUsd) maxUsd = m.usd;
     const placed = visible
       .map(m => {
-        let yv = interp(viewPrices, m.t);
+        let yv = interp(viewAll, m.t);
         if (m.price && m.type === "Buyback") yv = m.price * F(m.t);
         if (yv == null) return null;
         const y = Math.max(PAD.t + 4, Math.min(H - PAD.b - 4, Y(yv)));
@@ -431,23 +493,173 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
       .filter(Boolean) as { m: Marker; x: number; y: number; r: number }[];
 
     let dLine = "";
-    viewPrices.forEach((pt, i) => {
+    usable.forEach((pt, i) => {
       dLine += (i ? " L " : "M ") + X(pt.t).toFixed(1) + " " + Y(pt.p).toFixed(1);
     });
     const yBase = (H - PAD.b).toFixed(1);
-    const dArea = `${dLine} L ${X(t1).toFixed(1)} ${yBase} L ${X(t0).toFixed(1)} ${yBase} Z`;
+    const dArea = `${dLine} L ${X(usable[usable.length - 1].t).toFixed(1)} ${yBase} L ${X(usable[0].t).toFixed(1)} ${yBase} Z`;
 
-    return { t0, t1, pmin, pmax, X, Y, placed, dLine, dArea, ticks: niceTicks(pmin, pmax, 4) };
-  }, [viewPrices, metric, F, markers, hidden, width, H, avgCost, PAD.l, PAD.r, PAD.t, PAD.b]);
+    const barW = Math.max(1.5, Math.min(14, ((width - PAD.l - PAD.r) / Math.max(1, usable.length)) * 0.7));
 
-  /* pointer */
-  const onMove = (evt: React.PointerEvent<SVGSVGElement>) => {
-    if (!geom) return;
-    const rect = (evt.currentTarget as SVGSVGElement).getBoundingClientRect();
+    return { t0, t1, f0, f1, pmin, pmax, X, Y, placed, pts: usable, dLine, dArea, barW, ticks: niceTicks(pmin, pmax, 4) };
+  }, [viewAll, view, yman, ctype, metric, F, markers, hidden, width, H, avgCost, PAD.l, PAD.r, PAD.t, PAD.b]);
+
+  /* ── zoom helpers ── */
+  const clampView = (x0: number, x1: number) => {
+    if (!viewAll.length) return;
+    const f0 = viewAll[0].t,
+      f1 = viewAll[viewAll.length - 1].t;
+    const minSpan = Math.max((f1 - f0) / 300, 30 * 60 * 1000);
+    if (x1 - x0 < minSpan) {
+      const c = (x0 + x1) / 2;
+      x0 = c - minSpan / 2;
+      x1 = c + minSpan / 2;
+    }
+    if (x0 < f0) {
+      x1 = Math.min(f1, x1 + (f0 - x0));
+      x0 = f0;
+    }
+    if (x1 > f1) {
+      x0 = Math.max(f0, x0 - (x1 - f1));
+      x1 = f1;
+    }
+    setView(x0 <= f0 + 1 && x1 >= f1 - 1 ? null : { x0, x1 });
+  };
+
+  const coords = (clientX: number, clientY: number) => {
+    const svg = svgRef.current!;
+    const rect = svg.getBoundingClientRect();
     const scale = width / rect.width || 1;
-    const sx = (evt.clientX - rect.left) * scale;
-    const sy = (evt.clientY - rect.top) * scale;
+    return { sx: (clientX - rect.left) * scale, sy: (clientY - rect.top) * scale, scale };
+  };
+  const zoneOf = (sx: number, sy: number) => {
+    if (sx > width - PAD.r) return "yaxis";
+    if (sy > H - PAD.b) return "xaxis";
+    return "plot";
+  };
+  const tAt = (sx: number) => (geom ? geom.t0 + ((sx - PAD.l) / (width - PAD.l - PAD.r)) * (geom.t1 - geom.t0) : 0);
+  const vAt = (sy: number) =>
+    geom ? geom.pmin + (1 - (sy - PAD.t) / (H - PAD.t - PAD.b)) * (geom.pmax - geom.pmin) : 0;
 
+  /* wheel needs a non-passive listener to preventDefault */
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!geom) return;
+      e.preventDefault();
+      const { sx, sy } = coords(e.clientX, e.clientY);
+      const factor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
+      if (zoneOf(sx, sy) === "yaxis") {
+        const a = vAt(sy);
+        setYman({ min: a - (a - geom.pmin) * factor, max: a + (geom.pmax - a) * factor });
+      } else {
+        const a = tAt(Math.max(PAD.l, Math.min(sx, width - PAD.r)));
+        clampView(a - (a - geom.t0) * factor, a + (geom.t1 - a) * factor);
+      }
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geom, width, H]);
+
+  /* pointer: pan / axis-drag / pinch / hover */
+  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!geom) return;
+    (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId);
+    const { sx, sy } = coords(e.clientX, e.clientY);
+    pointersRef.current[e.pointerId] = { sx, sy };
+    const ids = Object.keys(pointersRef.current);
+    if (ids.length === 2) {
+      const a = pointersRef.current[Number(ids[0])];
+      const b = pointersRef.current[Number(ids[1])];
+      const overY = zoneOf(a.sx, a.sy) === "yaxis" && zoneOf(b.sx, b.sy) === "yaxis";
+      dragRef.current = {
+        mode: overY ? "pinchY" : "pinchX",
+        d0: overY ? Math.abs(a.sy - b.sy) || 1 : Math.abs(a.sx - b.sx) || 1,
+        anchorT: tAt((a.sx + b.sx) / 2),
+        anchorV: vAt((a.sy + b.sy) / 2),
+        x00: geom.t0,
+        x10: geom.t1,
+        y00: geom.pmin,
+        y10: geom.pmax,
+      };
+      setHover(null);
+      return;
+    }
+    const zn = zoneOf(sx, sy);
+    dragRef.current = {
+      mode: zn === "yaxis" ? "axisY" : zn === "xaxis" ? "axisX" : "pan",
+      sx0: sx,
+      sy0: sy,
+      moved: false,
+      x00: geom.t0,
+      x10: geom.t1,
+      y00: geom.pmin,
+      y10: geom.pmax,
+      hadYman: !!yman,
+    };
+  };
+
+  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!geom) return;
+    const { sx, sy, scale } = coords(e.clientX, e.clientY);
+    if (pointersRef.current[e.pointerId]) pointersRef.current[e.pointerId] = { sx, sy };
+    const drag = dragRef.current as Record<string, number | string | boolean> | null;
+
+    if (drag && (drag.mode === "pinchX" || drag.mode === "pinchY")) {
+      const ids = Object.keys(pointersRef.current);
+      if (ids.length < 2) return;
+      const a = pointersRef.current[Number(ids[0])];
+      const b = pointersRef.current[Number(ids[1])];
+      if (drag.mode === "pinchX") {
+        const d = Math.abs(a.sx - b.sx) || 1;
+        const f = (drag.d0 as number) / d;
+        const aT = drag.anchorT as number;
+        clampView(aT - (aT - (drag.x00 as number)) * f, aT + ((drag.x10 as number) - aT) * f);
+      } else {
+        const dv = Math.abs(a.sy - b.sy) || 1;
+        const fy = (drag.d0 as number) / dv;
+        const aV = drag.anchorV as number;
+        setYman({ min: aV - (aV - (drag.y00 as number)) * fy, max: aV + ((drag.y10 as number) - aV) * fy });
+      }
+      return;
+    }
+
+    if (drag && e.buttons) {
+      const dx = sx - (drag.sx0 as number);
+      const dy = sy - (drag.sy0 as number);
+      if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+      if (!drag.moved) return;
+      suppressClickRef.current = true;
+      setHover(null);
+      if (drag.mode === "pan") {
+        const span = (drag.x10 as number) - (drag.x00 as number);
+        const dt = (-dx / (width - PAD.l - PAD.r)) * span;
+        clampView((drag.x00 as number) + dt, (drag.x10 as number) + dt);
+        if (drag.hadYman) {
+          const vs = (drag.y10 as number) - (drag.y00 as number);
+          const dvv = (dy / (H - PAD.t - PAD.b)) * vs;
+          setYman({ min: (drag.y00 as number) + dvv, max: (drag.y10 as number) + dvv });
+        }
+      } else if (drag.mode === "axisX") {
+        const fx = Math.exp(-dx / 200);
+        const cT = ((drag.x00 as number) + (drag.x10 as number)) / 2;
+        clampView(cT - (cT - (drag.x00 as number)) * fx, cT + ((drag.x10 as number) - cT) * fx);
+      } else if (drag.mode === "axisY") {
+        const fy2 = Math.exp(dy / 200);
+        const cV = ((drag.y00 as number) + (drag.y10 as number)) / 2;
+        setYman({ min: cV - (cV - (drag.y00 as number)) * fy2, max: cV + ((drag.y10 as number) - cV) * fy2 });
+      }
+      return;
+    }
+
+    /* hover */
+    const zn = zoneOf(sx, sy);
+    if (zn !== "plot") {
+      setHover(null);
+      return;
+    }
     let best: { m: Marker; x: number; y: number; r: number } | null = null;
     let bestD = Infinity;
     for (const h of geom.placed) {
@@ -475,8 +687,8 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
       setHover(null);
       return;
     }
-    const t = geom.t0 + ((sx - PAD.l) / (width - PAD.l - PAD.r)) * (geom.t1 - geom.t0);
-    const p = interp(viewPrices, t);
+    const t = tAt(sx);
+    const p = interp(viewAll, t);
     if (p == null) {
       setHover(null);
       return;
@@ -489,6 +701,14 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
         { cls: "main", text: fmtVal(p) },
       ],
     });
+  };
+
+  const onPointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    delete pointersRef.current[e.pointerId];
+    dragRef.current = null;
+    setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 50);
   };
 
   const nx = Math.max(3, Math.min(6, Math.floor(width / 160)));
@@ -539,18 +759,55 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
             className="inline-block w-[7px] h-[7px] rounded-full animate-pulse"
             style={{ background: ACCENT, boxShadow: `0 0 6px ${ACCENT}` }}
           />
-          {live ? `LIVE ${fmtPrice(live)}` : "LIVE"}
+          {live && metric === "price" ? `LIVE ${fmtPrice(live)}` : live ? `LIVE MCAP ${fmtUsd(live * (F(Date.now()) || 1))}` : "LIVE"}
         </div>
       </div>
 
-      {/* metric toggle + range buttons */}
+      {/* chart type + metric toggle + range buttons */}
       <div className="flex gap-1 justify-end mb-1 items-center flex-wrap">
+        <div className="flex rounded-md overflow-hidden mr-1" style={{ border: "1px solid #2a2a2a" }}>
+          {(["line", "candles"] as const).map(c => (
+            <button
+              key={c}
+              type="button"
+              aria-label={c === "line" ? "Line chart" : "Candlestick chart"}
+              onClick={() => setCtype(c)}
+              className="px-2 py-1 flex items-center"
+              style={{ color: ctype === c ? "#fff" : TEXT_3, background: ctype === c ? "#ffffff14" : "transparent" }}
+            >
+              {c === "line" ? (
+                <svg width={14} height={12} viewBox="0 0 14 12">
+                  <path
+                    d="M1 9 L4.5 5 L7.5 7 L13 1.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.6}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              ) : (
+                <svg width={14} height={12} viewBox="0 0 14 12">
+                  <g stroke="currentColor" strokeWidth={1.2}>
+                    <line x1={3.5} y1={0.5} x2={3.5} y2={11.5} />
+                    <rect x={1.5} y={3} width={4} height={5} fill="currentColor" stroke="none" />
+                    <line x1={10.5} y1={0.5} x2={10.5} y2={11.5} />
+                    <rect x={8.5} y={2} width={4} height={4.5} fill="none" />
+                  </g>
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
         <div className="flex rounded-md overflow-hidden mr-2" style={{ border: "1px solid #2a2a2a" }}>
           {(["price", "mcap"] as const).map(m => (
             <button
               key={m}
               type="button"
-              onClick={() => setMetric(m)}
+              onClick={() => {
+                setMetric(m);
+                setYman(null);
+              }}
               className="text-[10px] px-2 py-0.5"
               style={{ color: metric === m ? "#fff" : TEXT_3, background: metric === m ? "#ffffff14" : "transparent" }}
             >
@@ -578,16 +835,25 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
       {/* chart */}
       <div ref={wrapRef} className="relative">
         <svg
+          ref={svgRef}
           viewBox={`0 0 ${width} ${H}`}
           width="100%"
           role="img"
           aria-label="TurboUSD price with AMI treasury operations"
-          onPointerMove={onMove}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
           onPointerLeave={() => setHover(null)}
+          onDoubleClick={() => {
+            setView(null);
+            setYman(null);
+          }}
           onClick={() => {
+            if (suppressClickRef.current) return;
             if (hover?.tx) window.open(`https://basescan.org/tx/${encodeURIComponent(hover.tx)}`, "_blank", "noopener");
           }}
-          style={{ display: "block", cursor: hover?.tx ? "pointer" : "default" }}
+          style={{ display: "block", cursor: hover?.tx ? "pointer" : "default", touchAction: "none", userSelect: "none" }}
         >
           {/* watermark */}
           <text
@@ -604,14 +870,18 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
 
           {geom && (
             <>
-              {geom.ticks.map(v => (
-                <g key={v}>
-                  <line x1={PAD.l} y1={geom.Y(v)} x2={width - PAD.r} y2={geom.Y(v)} stroke={GRID} strokeWidth={1} />
-                  <text x={width - PAD.r + 6} y={geom.Y(v) + 3} fontSize={10} fill={TEXT_3}>
-                    {fmtVal(v)}
-                  </text>
-                </g>
-              ))}
+              {geom.ticks.map(
+                v =>
+                  v >= geom.pmin &&
+                  v <= geom.pmax && (
+                    <g key={v}>
+                      <line x1={PAD.l} y1={geom.Y(v)} x2={width - PAD.r} y2={geom.Y(v)} stroke={GRID} strokeWidth={1} />
+                      <text x={width - PAD.r + 6} y={geom.Y(v) + 3} fontSize={10} fill={TEXT_3}>
+                        {fmtVal(v)}
+                      </text>
+                    </g>
+                  ),
+              )}
               {Array.from({ length: nx + 1 }, (_, i) => {
                 const tt = geom.t0 + (geom.t1 - geom.t0) * (i / nx);
                 return (
@@ -632,31 +902,72 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
                   <stop offset="0%" stopColor={ACCENT} stopOpacity={0.16} />
                   <stop offset="100%" stopColor={ACCENT} stopOpacity={0} />
                 </linearGradient>
+                <clipPath id="ami-ops-clip">
+                  <rect x={PAD.l} y={PAD.t} width={width - PAD.l - PAD.r} height={H - PAD.t - PAD.b} />
+                </clipPath>
               </defs>
-              <path d={geom.dArea} fill="url(#ami-ops-grad)" />
-              <path d={geom.dLine} fill="none" stroke={LINE} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-              {metric === "price" && avgCost && avgCost > geom.pmin && avgCost < geom.pmax && (
+              <g clipPath="url(#ami-ops-clip)">
+                {ctype === "candles" ? (
+                  geom.pts.map((x, i) => {
+                    const cx = geom.X(x.t);
+                    const up = x.c >= x.o;
+                    const col = up ? GREEN_C : RED_C;
+                    const byTop = geom.Y(Math.max(x.o, x.c));
+                    const byBot = geom.Y(Math.min(x.o, x.c));
+                    return (
+                      <g key={i}>
+                        <line x1={cx} y1={geom.Y(x.l)} x2={cx} y2={geom.Y(x.h)} stroke={col} strokeWidth={1} />
+                        <rect
+                          x={cx - geom.barW / 2}
+                          y={byTop}
+                          width={geom.barW}
+                          height={Math.max(1, byBot - byTop)}
+                          fill={col}
+                        />
+                      </g>
+                    );
+                  })
+                ) : (
+                  <>
+                    <path d={geom.dArea} fill="url(#ami-ops-grad)" />
+                    <path
+                      d={geom.dLine}
+                      fill="none"
+                      stroke={LINE}
+                      strokeWidth={2}
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                    />
+                  </>
+                )}
+                {metric === "price" && avgCost && avgCost > geom.pmin && avgCost < geom.pmax && (
+                  <g>
+                    <line
+                      x1={PAD.l}
+                      y1={geom.Y(avgCost)}
+                      x2={width - PAD.r}
+                      y2={geom.Y(avgCost)}
+                      stroke={TEXT_2}
+                      strokeWidth={1.5}
+                      strokeDasharray="5 4"
+                    />
+                    <text x={width - PAD.r - 4} y={geom.Y(avgCost) - 5} fontSize={10} fill={TEXT_2} textAnchor="end">
+                      avg buyback {fmtPrice(avgCost)}
+                    </text>
+                  </g>
+                )}
                 <g>
-                  <line
-                    x1={PAD.l}
-                    y1={geom.Y(avgCost)}
-                    x2={width - PAD.r}
-                    y2={geom.Y(avgCost)}
-                    stroke={TEXT_2}
-                    strokeWidth={1.5}
-                    strokeDasharray="5 4"
-                  />
-                  <text x={width - PAD.r - 4} y={geom.Y(avgCost) - 5} fontSize={10} fill={TEXT_2} textAnchor="end">
-                    avg buyback {fmtPrice(avgCost)}
-                  </text>
+                  {geom.placed.map((h, i) => {
+                    const st = OP_STYLE[h.m.type];
+                    return <MarkerShape key={i} shape={st.shape} x={h.x} y={h.y} r={h.r} color={st.color} />;
+                  })}
                 </g>
-              )}
-              <g>
-                {geom.placed.map((h, i) => {
-                  const st = OP_STYLE[h.m.type];
-                  return <MarkerShape key={i} shape={st.shape} x={h.x} y={h.y} r={h.r} color={st.color} />;
-                })}
               </g>
+              {(view || yman) && (
+                <text x={PAD.l + 6} y={PAD.t + 12} fontSize={9} fill={TEXT_3}>
+                  double-click para resetear zoom
+                </text>
+              )}
               {hover && (
                 <line
                   x1={hover.x * (width / (wrapRef.current?.clientWidth || width))}
@@ -711,8 +1022,8 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
 
       <p className="mt-2 text-[10px] leading-relaxed" style={{ color: TEXT_3 }}>
         Every operation AMI executes on-chain is plotted on the ₸USD price line — marker size is the USD size of the
-        operation. The dashed line is AMI&apos;s average buyback price. Hover any marker for the receipt; click to open
-        it on Basescan.
+        operation. The dashed line is AMI&apos;s average buyback price. Scroll or drag the axes to zoom; double-click to
+        reset. Hover any marker for the receipt; click to open it on Basescan.
       </p>
     </div>
   );
