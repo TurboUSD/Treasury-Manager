@@ -15,6 +15,7 @@ export const menuLinks: HeaderMenuLink[] = [
   { label: "Home", href: "https://turbousd.com", external: true },
   { label: "Dashboard", href: "/" },
   { label: "AMI Overview", href: "https://turbousd.com/ami", external: true },
+  { label: "Get \u20B8USD", href: "https://turbousd.com/buy", external: true },
 ];
 
 function IconX() {
