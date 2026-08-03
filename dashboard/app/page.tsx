@@ -8,6 +8,7 @@ import { Area, AreaChart, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, 
 import { parseEther, parseUnits } from "viem";
 import { base } from "viem/chains";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { AmiOpsChart, type AmiOpRow } from "~~/components/AmiOpsChart";
 
 // ── Contract Addresses ─────────────────────────────────────────────────────
 const TREASURY_V1 = "0x3dbF93D110C677A1c063A600cb42940262f3BBd6" as const;
@@ -3935,6 +3936,12 @@ const Home: NextPage = () => {
             Tap amount to see USD value
           </p>
         </div>
+      </div>
+
+      {/* AMI Operations Chart — price line with every AMI op plotted on it */}
+      <div className="max-w-4xl w-full px-4 mb-8">
+        <SectionTitle>AMI on the Chart</SectionTitle>
+        <AmiOpsChart operations={(apiData?.operations ?? []) as AmiOpRow[]} />
       </div>
 
       {/* Owner-only panels */}
