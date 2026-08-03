@@ -132,6 +132,68 @@ async function refreshCandles(sb: any, wethPriceUsd: number) {
   await sb.from("scan_state").update({ block_number: to, updated_at: new Date().toISOString() }).eq("key", "price_last_block");
 }
 
+/* ── Legacy TreasuryManager v1 ops (pre-date the operations table) ──
+   These live hardcoded in the dashboard's Treasury Activity table
+   (HISTORICAL_OPS_RAW) and are NOT in Supabase on purpose: the dashboard
+   already accounts their totals separately, and inserting them into the
+   table would double-count burns/buybacks and leak into the CoinTracking
+   export. They are appended here so the CHARTS show them, with the v1
+   author label. token_price_usd is filled from price_history at runtime. */
+const LEGACY_V1_OPS = [
+  {
+    type: "Trade",
+    op_type: "Buyback",
+    buy_amount: 22024060,
+    buy_currency: "TUSD2",
+    sell_amount: 100,
+    sell_currency: "USDC",
+    exchange: "Treasury Manager v1",
+    weth_price_usd: null as number | null,
+    token_price_usd: null as number | null,
+    tx_hash: "0x5c3aac4e5ff14e22313f485d01b19432fd1294acf1740055f3e77f0ce7c5362b",
+    date_utc: "2026-03-18T12:00:00Z",
+  },
+  {
+    type: "Spend",
+    op_type: "Burn",
+    buy_amount: null as number | null,
+    buy_currency: null as string | null,
+    sell_amount: 43147461,
+    sell_currency: "TUSD2",
+    exchange: "Treasury Manager v1",
+    weth_price_usd: null as number | null,
+    token_price_usd: null as number | null,
+    tx_hash: "0xa590b565b381eea85b144cd39821d301fb7d23d4c13e4a147033d87491db161c",
+    date_utc: "2026-03-18T12:00:01Z",
+  },
+  {
+    type: "Spend",
+    op_type: "BurnEngine",
+    buy_amount: null as number | null,
+    buy_currency: null as string | null,
+    sell_amount: 1000,
+    sell_currency: "TUSD2",
+    exchange: "BurnEngine v1",
+    weth_price_usd: null as number | null,
+    token_price_usd: null as number | null,
+    tx_hash: "0xe39ab49ffd9894e21ecfd8f7eec071ffef09587b19e57503680f1a51fc297c0b",
+    date_utc: "2026-03-18T12:00:02Z",
+  },
+  {
+    type: "Spend",
+    op_type: "BurnEngine",
+    buy_amount: null as number | null,
+    buy_currency: null as string | null,
+    sell_amount: 1000,
+    sell_currency: "TUSD2",
+    exchange: "BurnEngine v1",
+    weth_price_usd: null as number | null,
+    token_price_usd: null as number | null,
+    tx_hash: "0xb8df47dcd3ff0e07efa98007360dba7d0ab74058bd283163c9db397d34913f96",
+    date_utc: "2026-03-18T12:00:03Z",
+  },
+];
+
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
@@ -144,7 +206,7 @@ export async function GET() {
       sb
         .from("operations")
         .select(
-          "type,op_type,buy_amount,buy_currency,sell_amount,sell_currency,weth_price_usd,token_price_usd,tx_hash,date_utc",
+          "type,op_type,buy_amount,buy_currency,sell_amount,sell_currency,exchange,weth_price_usd,token_price_usd,tx_hash,date_utc",
         )
         .order("date_utc", { ascending: true })
         .limit(5000),
@@ -179,7 +241,19 @@ export async function GET() {
       .order("day", { ascending: true })
       .limit(3000);
 
-    return NextResponse.json({ operations: operations || [], cache, candles: candles || [] }, { headers: CORS_HEADERS });
+    // Valorar las ops legacy v1 con el precio real de su día (de nuestras velas)
+    const closeByDay = new Map<string, number>();
+    for (const c of candles || []) closeByDay.set(String(c.day), Number(c.close));
+    const dbTx = new Set((operations || []).map(o => o.tx_hash).filter(Boolean));
+    const legacy = LEGACY_V1_OPS.filter(o => !dbTx.has(o.tx_hash)).map(o => ({
+      ...o,
+      token_price_usd: o.token_price_usd ?? closeByDay.get(o.date_utc.slice(0, 10)) ?? null,
+    }));
+    const allOps = [...legacy, ...(operations || [])].sort(
+      (a, b) => Date.parse(a.date_utc) - Date.parse(b.date_utc),
+    );
+
+    return NextResponse.json({ operations: allOps, cache, candles: candles || [] }, { headers: CORS_HEADERS });
   } catch (e) {
     console.error("widget-data failed:", e);
     return NextResponse.json({ error: "widget-data unavailable" }, { status: 500, headers: CORS_HEADERS });

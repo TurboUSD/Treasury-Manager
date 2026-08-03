@@ -69,6 +69,7 @@ export type AmiOpRow = {
   token_price_usd: number | null;
   tx_hash: string | null;
   date_utc: string;
+  exchange?: string | null;
 };
 
 type Marker = {
@@ -187,6 +188,7 @@ function processOps(rows: AmiOpRow[]): {
       if (tusd > 0 && spent > 0) opPrice = spent / tusd;
       main = `${fmtAmt(tr.sell_amount || 0)} ${tr.sell_currency || "WETH"} → ${fmtAmt(tusd)} ₸USD`;
       sub = (opPrice ? `at ${fmtPrice(opPrice)} · ` : "") + fmtUsd(usd);
+      if (op.exchange && op.exchange.includes("v1")) sub += ` · ${op.exchange}`;
       bbUsd += spent;
       bbTusd += tusd;
     } else if (t === "StrategicBuy") {
@@ -199,7 +201,9 @@ function processOps(rows: AmiOpRow[]): {
       const burned = br.sell_amount || 0;
       usd = burned * (br.token_price_usd || 0);
       main = `${fmtAmt(burned)} ₸USD burned 🔥`;
-      sub = (t === "BurnEngine" ? "BurnEngine · " : "Treasury · ") + fmtUsd(usd);
+      const author =
+        op.exchange && op.exchange.includes("v1") ? op.exchange : t === "BurnEngine" ? "BurnEngine" : "Treasury";
+      sub = `${author} · ${fmtUsd(usd)}`;
       burnEvents.push({ t: ts, amt: burned });
     } else if (t === "Stake") {
       const sr = rws.find(r => r.sell_currency === "TUSD2") || op;
@@ -288,6 +292,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
   const [burnedNow, setBurnedNow] = useState<number>(0);
   const [prices, setPrices] = useState<Pt[]>([]);
   const [candles, setCandles] = useState<Pt[]>([]);
+  const [apiOps, setApiOps] = useState<AmiOpRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
@@ -336,6 +341,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
         }
         const s = Number(j.cache?.data?.tusdSupplyNum || 0);
         if (s > 0) setSupplyNow(s);
+        if (Array.isArray(j.operations) && j.operations.length) setApiOps(j.operations as AmiOpRow[]);
         const bn = Number(j.cache?.data?.tusdBurnedNum || 0);
         if (bn > 0) setBurnedNow(bn);
       })
@@ -391,7 +397,11 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
     };
   }, [range, candles]);
 
-  const { markers, avgCost, burnEvents } = useMemo(() => processOps(operations || []), [operations]);
+  /* preferimos las ops del API (incluyen las legacy de Treasury Manager v1) */
+  const { markers, avgCost, burnEvents } = useMemo(
+    () => processOps(apiOps.length ? apiOps : operations || []),
+    [apiOps, operations],
+  );
 
   /* supply(t) = supplyNow + burned after t */
   const supplyAt = useMemo(() => {
@@ -491,6 +501,25 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
         return { m, x: X(m.t), y, r };
       })
       .filter(Boolean) as { m: Marker; x: number; y: number; r: number }[];
+
+    /* colisiones: si dos marcadores se solapan, apilar el siguiente HACIA
+       ARRIBA con un pequeño hueco para que se vea que hay varios */
+    for (let pi = 0; pi < placed.length; pi++) {
+      const p = placed[pi];
+      let guard = 0;
+      let collided = true;
+      while (collided && guard++ < 24) {
+        collided = false;
+        for (let qi = 0; qi < pi; qi++) {
+          const q = placed[qi];
+          if (Math.hypot(p.x - q.x, p.y - q.y) < p.r + q.r + 2) {
+            p.y = q.y - (q.r + p.r + 5); // justo encima del que choca
+            collided = true;
+          }
+        }
+      }
+      p.y = Math.max(PAD.t + p.r + 2, p.y);
+    }
 
     let dLine = "";
     usable.forEach((pt, i) => {
