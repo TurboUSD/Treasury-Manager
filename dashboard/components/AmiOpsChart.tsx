@@ -323,6 +323,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [width, setWidth] = useState(800);
   const [range, setRange] = useState("90D");
+  const [rangeOpen, setRangeOpen] = useState(false);
   const [metric, setMetric] = useState<"price" | "mcap">("price");
   const [opAuthor, setOpAuthor] = useState<"all" | "ami">("ami"); // el treasury muestra AMI por defecto
   const [ctype, setCtype] = useState<"line" | "candles">("line");
@@ -347,6 +348,14 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
   const dragRef = useRef<Record<string, unknown> | null>(null);
   const pointersRef = useRef<Record<number, { sx: number; sy: number }>>({});
   const suppressClickRef = useRef(false);
+
+  /* cerrar el dropdown de rango al hacer click fuera */
+  useEffect(() => {
+    if (!rangeOpen) return;
+    const close = () => setRangeOpen(false);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [rangeOpen]);
 
   /* container resize */
   useEffect(() => {
@@ -778,7 +787,24 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
     });
   };
 
+  const lastTapRef = useRef({ t: 0, x: 0, y: 0 });
   const onPointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    /* double-tap en táctil = reset zoom (dblclick no dispara en móvil) */
+    const drag = dragRef.current as { mode?: string; moved?: boolean } | null;
+    const wasPinch = drag && (drag.mode === "pinchX" || drag.mode === "pinchY");
+    const wasDrag = drag && drag.moved;
+    if (e.pointerType === "touch" && !wasPinch && !wasDrag) {
+      const { sx, sy } = coords(e.clientX, e.clientY);
+      const now = Date.now();
+      const lt = lastTapRef.current;
+      if (now - lt.t < 350 && Math.hypot(sx - lt.x, sy - lt.y) < 40) {
+        lastTapRef.current = { t: 0, x: 0, y: 0 };
+        setView(null);
+        setYman(null);
+      } else {
+        lastTapRef.current = { t: now, x: sx, y: sy };
+      }
+    }
     delete pointersRef.current[e.pointerId];
     dragRef.current = null;
     setTimeout(() => {
@@ -803,7 +829,8 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
         const burnCount = ami ? Math.max(0, stats.burns - stats.clankerBurns) : stats.burns;
         const stakedAll =
           Number(cacheD?.tusdStakedNum || 0) + Number(cacheD?.tusdBalNum || 0) + Number(cacheD?.tusdLiquidStakedNum || 0);
-        const stakedShown = ami ? stats.stakedAmi : stakedAll;
+        // ALL = staking + treasury manager + liquid; AMI = staking contract (stakes de AMI)
+        const stakedShown = ami ? Number(cacheD?.tusdStakedNum || 0) : stakedAll;
         const supplyNet = Number(cacheD?.tusdSupplyNum || 0) - Number(cacheD?.tusdBurnedNum || 0);
         const pct = supplyNet > 0 && stakedShown > 0 ? ((stakedShown / supplyNet) * 100).toFixed(2) + "% of supply" : `${ami ? stats.stakesAmi : stats.stakesAll} stakes`;
         const managed = Number(cacheD?.totalManagedUsd || 0);
@@ -826,7 +853,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
 
       {/* header: legend + live */}
       <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
-        <div className="flex flex-wrap gap-3 items-center">
+        <div className="flex flex-wrap gap-x-2 gap-y-1 md:gap-3 items-center">
           {LEGEND.map(item => {
             const st = OP_STYLE[item.types[0]];
             const off = hidden.has(item.key);
@@ -842,7 +869,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
                     return next;
                   })
                 }
-                className="flex items-center gap-1.5 text-[11px] transition-opacity"
+                className="flex items-center gap-1 md:gap-1.5 text-[10px] md:text-[11px] transition-opacity"
                 style={{ color: TEXT_2, opacity: off ? 0.35 : 1, textDecoration: off ? "line-through" : "none" }}
               >
                 <svg width={14} height={14} viewBox="0 0 14 14">
@@ -852,7 +879,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
               </button>
             );
           })}
-          <span className="flex items-center gap-1.5 text-[11px]" style={{ color: TEXT_2 }}>
+          <span className="flex items-center gap-1 md:gap-1.5 text-[10px] md:text-[11px]" style={{ color: TEXT_2 }}>
             <svg width={18} height={6}>
               <line x1={0} y1={3} x2={18} y2={3} stroke={TEXT_2} strokeWidth={2} strokeDasharray="4 3" />
             </svg>
@@ -933,21 +960,46 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
             </button>
           ))}
         </div>
-        {RANGES.map(r => (
+        <div className="relative">
           <button
-            key={r.key}
             type="button"
-            onClick={() => setRange(r.key)}
-            className="text-[10px] px-2 py-0.5 rounded-md"
-            style={{
-              color: range === r.key ? "#fff" : TEXT_3,
-              background: range === r.key ? "#ffffff10" : "transparent",
-              border: `1px solid ${range === r.key ? "#2a2a2a" : "transparent"}`,
+            onClick={e => {
+              e.stopPropagation();
+              setRangeOpen(o => !o);
             }}
+            className="text-[10px] px-2 py-1 rounded-md flex items-center gap-1"
+            style={{ color: "#fff", background: "#ffffff10", border: "1px solid #2a2a2a" }}
           >
-            {r.key}
+            {range}
+            <svg width={8} height={5} viewBox="0 0 8 5">
+              <path d="M1 1 L4 4 L7 1" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" />
+            </svg>
           </button>
-        ))}
+          {rangeOpen && (
+            <div
+              className="absolute right-0 mt-1 rounded-lg overflow-hidden z-20"
+              style={{ background: "#1c1c1c", border: "1px solid #333", minWidth: 72 }}
+            >
+              {RANGES.map(r => (
+                <button
+                  key={r.key}
+                  type="button"
+                  onClick={() => {
+                    setRange(r.key);
+                    setRangeOpen(false);
+                  }}
+                  className="block w-full text-left px-3 py-1.5 text-[10px]"
+                  style={{
+                    color: range === r.key ? "#fff" : TEXT_3,
+                    background: range === r.key ? "#ffffff10" : "transparent",
+                  }}
+                >
+                  {r.key}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* chart */}
@@ -1083,7 +1135,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
               </g>
               {(view || yman) && (
                 <text x={PAD.l + 6} y={PAD.t + 12} fontSize={9} fill={TEXT_3}>
-                  double-click para resetear zoom
+                  double-click / double-tap to reset zoom
                 </text>
               )}
               {hover && (
