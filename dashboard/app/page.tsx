@@ -2154,6 +2154,16 @@ const Home: NextPage = () => {
   const buybackWethTusd = apiData?.buybackWethTusd ?? 0;
   const buybackUsdcTusd = (apiData?.buybackUsdcTusd ?? 0) + LEGACY_BUYBACK_USDC_TUSD;
   const totalBuybackTusd = buybackWethTusd + buybackUsdcTusd;
+  // Total USD invertido en Strategic Token Buys (precio del momento de cada compra)
+  const strategicInvestedUsd = useMemo(() => {
+    let sum = 0;
+    for (const op of apiData?.operations ?? []) {
+      if (op.op_type === "StrategicBuy" && op.type === "Trade") {
+        sum += (op.sell_amount || 0) * (op.weth_price_usd || 0);
+      }
+    }
+    return sum;
+  }, [apiData?.operations]);
   const buybackPct = tusdSupplyNum > 0 ? (totalBuybackTusd / tusdSupplyNum) * 100 : 0;
   const buybackUsd = totalBuybackTusd * tusdPriceUsd;
 
@@ -2710,9 +2720,19 @@ const Home: NextPage = () => {
             }
           />
           <StatCard
-            title={`\u20B8USD Bought`}
+            title={`\u20B8USD Buybacks`}
             value={fmtBig(totalBuybackTusd)}
-            subtitle={<>{fmtUsdShort(buybackUsd)}<br />{fmtPct(buybackPct)}</>}
+            subtitle={
+              <>
+                <h3
+                  className="text-[10px] sm:text-xs font-medium uppercase tracking-wider"
+                  style={{ color: TEXT_MUTED, fontWeight: 600 }}
+                >
+                  Str. Token Buys
+                </h3>
+                <p className="text-base sm:text-xl font-bold mt-1 text-white">{fmtUsdShort(strategicInvestedUsd)}</p>
+              </>
+            }
             emoji="🛒"
             tooltip={
               <div style={{ lineHeight: 1.7 }}>
