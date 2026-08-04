@@ -135,7 +135,10 @@ function calcV3TokenPriceUsd(sqrtPriceX96: bigint, wethPriceUsd: number): number
 }
 
 // ── Viem client ────────────────────────────────────────────────────────────
-const rpcUrl = process.env.BASE_RPC_URL || `https://base-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY || "8GVG8WjDs-sGFRr6Rm839"}`;
+const rpcUrl =
+  process.env.BASE_RPC_URL ||
+  process.env.ANKR_RPC_URL ||
+  `https://base-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY || "8GVG8WjDs-sGFRr6Rm839"}`;
 
 const client = createPublicClient({
   chain: base,
@@ -784,9 +787,13 @@ export async function GET() {
     }
 
     // 4. Build chart snapshots from Transfer events (historical)
-    // For chart data, we re-scan from a wide window and build daily snapshots
-    // This runs only when cache is stale (every 5 min)
-    const chartStartBlock = currentBlock > 4_320_000n ? currentBlock - 4_320_000n : 0n;
+    // FULL history: balances are reconstructed by summing transfers from a
+    // fixed genesis block (before any treasury activity, ~2025-07-04). The old
+    // sliding 100-day window silently dropped the initial strategic-buy
+    // inflows once they aged out, zeroing the whole strategic series.
+    // This runs only when cache is stale (every 5 min).
+    const CHART_GENESIS_BLOCK = 32_400_000n; // ~2025-07-04 on Base
+    const chartStartBlock = currentBlock > CHART_GENESIS_BLOCK ? CHART_GENESIS_BLOCK : 0n;
     const tokenInfo: Record<string, { cat: "tusd" | "weth" | "usdc" | "strategic"; dec: number }> = {};
     tokenInfo[TUSD.toLowerCase()] = { cat: "tusd", dec: 18 };
     tokenInfo[WETH_ADDR.toLowerCase()] = { cat: "weth", dec: 18 };
@@ -803,23 +810,54 @@ export async function GET() {
     const coreTokenAddrs = new Set([TUSD.toLowerCase(), WETH_ADDR.toLowerCase(), USDC_ADDR.toLowerCase()]);
     const coreTokens = tokenAddrs.filter(a => coreTokenAddrs.has(a.toLowerCase()));
 
+    // Adaptive log fetcher: tries the full range in one call (Ankr premium
+    // handles it) and bisects on RPC range/size errors. Gives up on a
+    // sub-range only when it can no longer be split.
+    const getLogsAdaptive = async (
+      params: { address: `0x${string}`[]; args: { to?: `0x${string}`; from?: `0x${string}` } },
+      fromBlock: bigint,
+      toBlock: bigint,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      out: any[],
+    ): Promise<void> => {
+      try {
+        const logs = await client.getLogs({
+          address: params.address,
+          event: transferEvent,
+          args: params.args,
+          fromBlock,
+          toBlock,
+        });
+        out.push(...logs);
+      } catch {
+        if (toBlock - fromBlock < 100_000n) return; // sub-rango mínimo: saltar
+        const mid = (fromBlock + toBlock) / 2n;
+        await getLogsAdaptive(params, fromBlock, mid, out);
+        await getLogsAdaptive(params, mid + 1n, toBlock, out);
+      }
+    };
+
     for (const tAddr of treasuries) {
       const tokensForThisTreasury = tAddr === ACTIVE_TREASURY ? tokenAddrs : coreTokens;
       if (tokensForThisTreasury.length === 0) continue;
       try {
-        const [inLogs, outLogs] = await Promise.all([
-          client.getLogs({
-            address: tokensForThisTreasury as `0x${string}`[],
-            event: transferEvent,
-            args: { to: tAddr as `0x${string}` },
-            fromBlock: chartStartBlock,
-          }),
-          client.getLogs({
-            address: tokensForThisTreasury as `0x${string}`[],
-            event: transferEvent,
-            args: { from: tAddr as `0x${string}` },
-            fromBlock: chartStartBlock,
-          }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const inLogs: any[] = [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const outLogs: any[] = [];
+        await Promise.all([
+          getLogsAdaptive(
+            { address: tokensForThisTreasury as `0x${string}`[], args: { to: tAddr as `0x${string}` } },
+            chartStartBlock,
+            currentBlock,
+            inLogs,
+          ),
+          getLogsAdaptive(
+            { address: tokensForThisTreasury as `0x${string}`[], args: { from: tAddr as `0x${string}` } },
+            chartStartBlock,
+            currentBlock,
+            outLogs,
+          ),
         ]);
         for (const l of inLogs) {
           if ((l.args as { value: bigint }).value)

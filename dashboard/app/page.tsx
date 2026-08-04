@@ -3198,8 +3198,8 @@ const Home: NextPage = () => {
                 </button>
               ))}
             </div>
-            {/* Time range dropdown — only for "all" view (strategic has no historical per-token data) */}
-            {chartView === "all" && (
+            {/* Time range dropdown — both views (full per-token history is now scanned) */}
+            {(
               <div className="relative">
                 <button
                   onClick={() => setChartRangeOpen(prev => !prev)}
