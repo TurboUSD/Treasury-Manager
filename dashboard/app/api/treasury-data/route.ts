@@ -3,6 +3,9 @@ import { createPublicClient, formatEther, formatUnits, http, parseAbiItem } from
 import { base } from "viem/chains";
 import { getSupabaseAdmin } from "~~/utils/supabase";
 
+// Allow up to 60s (Vercel) — the chart delta scan may need a few extra seconds
+export const maxDuration = 60;
+
 // ── Contract addresses ─────────────────────────────────────────────────────
 const TREASURY_V1 = "0x3dbF93D110C677A1c063A600cb42940262f3BBd6";
 const TREASURY_V2 = "0xAF8b3FEBA3411430FAc757968Ac1c9FB25b84107";
@@ -786,14 +789,13 @@ export async function GET() {
       }
     }
 
-    // 4. Build chart snapshots from Transfer events (historical)
-    // FULL history: balances are reconstructed by summing transfers from a
-    // fixed genesis block (before any treasury activity, ~2025-07-04). The old
-    // sliding 100-day window silently dropped the initial strategic-buy
-    // inflows once they aged out, zeroing the whole strategic series.
-    // This runs only when cache is stale (every 5 min).
-    const CHART_GENESIS_BLOCK = 32_400_000n; // ~2025-07-04 on Base
-    const chartStartBlock = currentBlock > CHART_GENESIS_BLOCK ? CHART_GENESIS_BLOCK : 0n;
+    // 4. Build chart snapshots from PERSISTED daily balances + delta scan.
+    // The full-history Transfer scan (from ~2025-07-04) is far too heavy for a
+    // serverless function — it silently timed out and the chart collapsed to a
+    // single "Today" point. The heavy scan now lives in
+    // scripts/backfill-chart.mjs (run once locally), which persists
+    // { lastBlock, running, dailyMap } into treasury_cache (key='chart_history').
+    // Here we only scan the small block delta since lastBlock and merge it in.
     const tokenInfo: Record<string, { cat: "tusd" | "weth" | "usdc" | "strategic"; dec: number }> = {};
     tokenInfo[TUSD.toLowerCase()] = { cat: "tusd", dec: 18 };
     tokenInfo[WETH_ADDR.toLowerCase()] = { cat: "weth", dec: 18 };
@@ -804,60 +806,76 @@ export async function GET() {
     const tokenAddrs = Object.keys(tokenInfo) as `0x${string}`[];
     const treasuries = [TREASURY_V1, TREASURY_V2_OLDEST, TREASURY_V2_OLD, ACTIVE_TREASURY] as `0x${string}`[];
 
-    type LogEntry = { block: bigint; token: string; amount: bigint; dir: 1 | -1 };
-    const allLogs: LogEntry[] = [];
-
-    const coreTokenAddrs = new Set([TUSD.toLowerCase(), WETH_ADDR.toLowerCase(), USDC_ADDR.toLowerCase()]);
-    const coreTokens = tokenAddrs.filter(a => coreTokenAddrs.has(a.toLowerCase()));
-
-    // Adaptive log fetcher: tries the full range in one call (Ankr premium
-    // handles it) and bisects on RPC range/size errors. Gives up on a
-    // sub-range only when it can no longer be split.
-    const getLogsAdaptive = async (
-      params: { address: `0x${string}`[]; args: { to?: `0x${string}`; from?: `0x${string}` } },
-      fromBlock: bigint,
-      toBlock: bigint,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      out: any[],
-    ): Promise<void> => {
-      try {
-        const logs = await client.getLogs({
-          address: params.address,
-          event: transferEvent,
-          args: params.args,
-          fromBlock,
-          toBlock,
-        });
-        out.push(...logs);
-      } catch {
-        if (toBlock - fromBlock < 100_000n) return; // sub-rango mínimo: saltar
-        const mid = (fromBlock + toBlock) / 2n;
-        await getLogsAdaptive(params, fromBlock, mid, out);
-        await getLogsAdaptive(params, mid + 1n, toBlock, out);
-      }
+    type ChartState = {
+      lastBlock: number;
+      running: Record<string, number>;
+      dailyMap: Record<string, Record<string, number>>;
     };
+    let chartState: ChartState | null = null;
+    try {
+      const { data: chartRow } = await sb
+        .from("treasury_cache")
+        .select("data")
+        .eq("key", "chart_history")
+        .single();
+      if (chartRow?.data?.dailyMap && chartRow?.data?.lastBlock) chartState = chartRow.data as ChartState;
+    } catch (e) {
+      console.error("[Chart] failed to load chart_history state:", e);
+    }
 
-    for (const tAddr of treasuries) {
-      const tokensForThisTreasury = tAddr === ACTIVE_TREASURY ? tokenAddrs : coreTokens;
-      if (tokensForThisTreasury.length === 0) continue;
-      try {
+    const running: Record<string, number> = { ...(chartState?.running || {}) };
+    const dailyMap: Record<string, Record<string, number>> = { ...(chartState?.dailyMap || {}) };
+
+    if (!chartState) {
+      console.error(
+        "[Chart] chart_history state missing — run `node scripts/backfill-chart.mjs` once. Chart will only show Today until then.",
+      );
+    } else if (BigInt(chartState.lastBlock) < currentBlock) {
+      const deltaFrom = BigInt(chartState.lastBlock) + 1n;
+      let scanOk = true;
+
+      // Adaptive log fetcher: tries the range in one call and bisects on RPC
+      // range/size errors. Logs (and flags) when a sub-range can't be fetched
+      // so we don't advance the cursor past unscanned blocks.
+      const getLogsAdaptive = async (
+        params: { address: `0x${string}`[]; args: { to?: `0x${string}`; from?: `0x${string}` } },
+        fromBlock: bigint,
+        toBlock: bigint,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        out: any[],
+      ): Promise<void> => {
+        try {
+          const logs = await client.getLogs({
+            address: params.address,
+            event: transferEvent,
+            args: params.args,
+            fromBlock,
+            toBlock,
+          });
+          out.push(...logs);
+        } catch (e) {
+          if (toBlock - fromBlock < 5_000n) {
+            console.error(`[Chart] getLogs gave up on ${fromBlock}→${toBlock}:`, e);
+            scanOk = false;
+            return;
+          }
+          const mid = (fromBlock + toBlock) / 2n;
+          await getLogsAdaptive(params, fromBlock, mid, out);
+          await getLogsAdaptive(params, mid + 1n, toBlock, out);
+        }
+      };
+
+      type LogEntry = { block: bigint; token: string; amount: bigint; dir: 1 | -1 };
+      const allLogs: LogEntry[] = [];
+
+      for (const tAddr of treasuries) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const inLogs: any[] = [];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const outLogs: any[] = [];
         await Promise.all([
-          getLogsAdaptive(
-            { address: tokensForThisTreasury as `0x${string}`[], args: { to: tAddr as `0x${string}` } },
-            chartStartBlock,
-            currentBlock,
-            inLogs,
-          ),
-          getLogsAdaptive(
-            { address: tokensForThisTreasury as `0x${string}`[], args: { from: tAddr as `0x${string}` } },
-            chartStartBlock,
-            currentBlock,
-            outLogs,
-          ),
+          getLogsAdaptive({ address: tokenAddrs, args: { to: tAddr as `0x${string}` } }, deltaFrom, currentBlock, inLogs),
+          getLogsAdaptive({ address: tokenAddrs, args: { from: tAddr as `0x${string}` } }, deltaFrom, currentBlock, outLogs),
         ]);
         for (const l of inLogs) {
           if ((l.args as { value: bigint }).value)
@@ -867,26 +885,35 @@ export async function GET() {
           if ((l.args as { value: bigint }).value)
             allLogs.push({ block: l.blockNumber, token: l.address.toLowerCase(), amount: (l.args as { value: bigint }).value, dir: -1 });
         }
-      } catch {
-        // Continue if one treasury range fails
       }
-    }
 
-    allLogs.sort((a, b) => Number(a.block - b.block));
+      allLogs.sort((a, b) => Number(a.block - b.block));
 
-    const running: Record<string, number> = {};
-    const dailyMap: Record<string, Record<string, number>> = {};
+      for (const log of allLogs) {
+        const info = tokenInfo[log.token];
+        if (!info) continue;
+        const v = Number(log.amount) / 10 ** info.dec;
+        running[log.token] = (running[log.token] || 0) + v * log.dir;
 
-    for (const log of allLogs) {
-      const info = tokenInfo[log.token];
-      if (!info) continue;
-      const v = Number(log.amount) / 10 ** info.dec;
-      running[log.token] = (running[log.token] || 0) + v * log.dir;
+        const blockDiff = Number(currentBlock - log.block);
+        const ts = now - blockDiff * 2;
+        const date = new Date(ts * 1000).toISOString().slice(0, 10);
+        dailyMap[date] = { ...running };
+      }
 
-      const blockDiff = Number(currentBlock - log.block);
-      const ts = now - blockDiff * 2;
-      const date = new Date(ts * 1000).toISOString().slice(0, 10);
-      dailyMap[date] = { ...running };
+      // Persist the advanced cursor ONLY if the whole delta was scanned —
+      // otherwise the next request retries the same range.
+      if (scanOk) {
+        const { error: chartErr } = await sb.from("treasury_cache").upsert(
+          {
+            key: "chart_history",
+            data: { lastBlock: Number(currentBlock), running, dailyMap, updatedAt: new Date().toISOString() },
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "key" },
+        );
+        if (chartErr) console.error("[Chart] chart_history upsert failed:", chartErr);
+      }
     }
 
     const tokenToTicker: Record<string, string> = {};
