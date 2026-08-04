@@ -3192,6 +3192,364 @@ const Home: NextPage = () => {
         );
       })()}
 
+      {/* Operations Table */}
+      <div ref={opsSectionRef} className="max-w-4xl w-full px-4 mb-8">
+        <div className="flex items-center justify-between" style={{ marginBottom: "-0.5rem" }}>
+          <SectionTitle>Onchain Activity</SectionTitle>
+          <div className="flex items-center gap-2" style={{ marginTop: "-1rem" }}>
+            <div className="flex rounded-md overflow-hidden" style={{ border: "1px solid #333" }}>
+              {(["all", "treasury"] as const).map(a => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => setOpsAuthorFilter(a)}
+                  className="text-[10px] px-2 py-1"
+                  style={{
+                    color: opsAuthorFilter === a ? "#fff" : TEXT_DIM,
+                    background: opsAuthorFilter === a ? "#ffffff14" : "transparent",
+                  }}
+                >
+                  {a === "all" ? "All" : "Only Treasury"}
+                </button>
+              ))}
+            </div>
+          {connectedAddress &&
+            apiData &&
+            (connectedAddress.toLowerCase() === apiData.ownerAddr?.toLowerCase() ||
+              connectedAddress.toLowerCase() === apiData.operatorAddr?.toLowerCase()) && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => window.open("/api/export-operations-csv", "_blank")}
+                  className="btn btn-xs sm:btn-sm"
+                  style={{
+                    background: "transparent",
+                    border: `1px solid ${GOLD}`,
+                    color: GOLD,
+                  }}
+                >
+                  Export CSV
+                </button>
+                <button
+                  onClick={() => window.open("/api/export-operations", "_blank")}
+                  className="btn btn-xs sm:btn-sm"
+                  style={{
+                    background: "transparent",
+                    border: `1px solid ${GOLD}`,
+                    color: GOLD,
+                  }}
+                >
+                  Export Excel
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        <div
+          className="rounded-xl text-xs sm:text-sm"
+          style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}`, overflow: "visible" }}
+        >
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="table table-xs sm:table-sm ops-table" style={{ color: "#e8e8e8" }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${CARD_BORDER}`, height: "2.0rem" }}>
+                  <th
+                    className="text-[10px] sm:text-xs uppercase tracking-wider"
+                    style={{ color: TEXT_MUTED, background: "transparent" }}
+                  >
+                    <div ref={opsFilterRef} className="inline-flex items-center gap-1">
+                      Type
+                      <button
+                        onClick={() => setOpsFilterOpen(prev => !prev)}
+                        className="inline-flex items-center justify-center"
+                        style={{ color: (opsTypeFilter.size > 0 || opsTokenFilter.size > 0) ? GOLD : TEXT_MUTED }}
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill={(opsTypeFilter.size > 0 || opsTokenFilter.size > 0) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
+                      </button>
+                      {opsFilterOpen && (() => {
+                        const rect = opsFilterRef.current?.getBoundingClientRect();
+                        return (
+                          <div
+                            className="fixed rounded-lg shadow-xl py-2 px-3"
+                            style={{
+                              background: "#1a1a1a",
+                              border: `1px solid ${CARD_BORDER}`,
+                              minWidth: "280px",
+                              zIndex: 9999,
+                              top: rect ? rect.bottom + 4 : 0,
+                              left: rect ? rect.left : 0,
+                            }}
+                            onClick={e => e.stopPropagation()}
+                          >
+                          <div className="flex gap-5">
+                            {/* Left column: Types */}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: TEXT_DIM }}>Types</div>
+                              {[
+                                { v: "all", l: "All types" },
+                                { v: "buyback", l: "Buyback" },
+                                { v: "burn", l: "Burn" },
+                                { v: "rebalance", l: "Rebalance" },
+                                { v: "stake", l: "Stake" },
+                                { v: "burnengine", l: "BurnEngine" },
+                                { v: "feeclaim", l: "FeeClaim" },
+                                { v: "strategicbuy", l: "Str.Buy" },
+                                { v: "strategicsell", l: "Str.Sell" },
+                              ].map(({ v, l }) => {
+                                const isAll = v === "all";
+                                const selected = isAll ? opsTypeFilter.size === 0 : opsTypeFilter.has(v);
+                                return (
+                                  <button
+                                    key={v}
+                                    onClick={() => {
+                                      if (isAll) {
+                                        setOpsTypeFilter(new Set());
+                                      } else {
+                                        setOpsTypeFilter(prev => {
+                                          const next = new Set(prev);
+                                          if (next.has(v)) next.delete(v);
+                                          else next.add(v);
+                                          return next;
+                                        });
+                                      }
+                                      setOpsPage(1);
+                                    }}
+                                    className="w-full text-left py-1 text-xs hover:bg-[#333] flex items-center gap-2 rounded px-1"
+                                    style={{ color: selected ? (isAll ? GOLD : "#fff") : "#888" }}
+                                  >
+                                    <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: selected ? GOLD : "transparent" }} />
+                                    {l}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {/* Right column: Tokens */}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: TEXT_DIM }}>Tokens</div>
+                              <button
+                                onClick={() => { setOpsTokenFilter(new Set()); setOpsPage(1); }}
+                                className="w-full text-left py-1 text-xs hover:bg-[#333] flex items-center gap-2 rounded px-1"
+                                style={{ color: opsTokenFilter.size === 0 ? GOLD : "#888" }}
+                              >
+                                <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: opsTokenFilter.size === 0 ? GOLD : "transparent" }} />
+                                All tokens
+                              </button>
+                              {(() => {
+                                const tokenSet = new Set<string>();
+                                for (const op of allOpsForFilter) {
+                                  if (op.token) tokenSet.add(op.token);
+                                }
+                                tokenSet.delete("");
+                                tokenSet.delete("ETH");
+                                tokenSet.delete("WETH");
+                                tokenSet.delete("USDC");
+                                tokenSet.delete("TUSD2");
+                                const allTokens = Array.from(tokenSet).sort();
+                                return allTokens.map(t => {
+                                  const selected = opsTokenFilter.has(t);
+                                  return (
+                                    <button
+                                      key={t}
+                                      onClick={() => {
+                                        setOpsTokenFilter(prev => {
+                                          const next = new Set(prev);
+                                          if (next.has(t)) next.delete(t);
+                                          else next.add(t);
+                                          return next;
+                                        });
+                                        setOpsPage(1);
+                                      }}
+                                      className="w-full text-left py-1 text-xs hover:bg-[#333] flex items-center gap-2 rounded px-1"
+                                      style={{ color: selected ? "#fff" : "#888" }}
+                                    >
+                                      <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: selected ? GOLD : "transparent" }} />
+                                      {t}
+                                    </button>
+                                  );
+                                });
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                        );
+                      })()}
+                    </div>
+                  </th>
+                  <th
+                    className="text-[10px] sm:text-xs uppercase tracking-wider cursor-pointer select-none"
+                    style={{ color: opsSort?.col === "amount" ? "#fff" : TEXT_MUTED, background: "transparent" }}
+                    onClick={() => toggleSort("amount")}
+                  >
+                    Amount <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{sortIcon("amount")}</span>
+                  </th>
+                  <th
+                    className="text-[10px] sm:text-xs uppercase tracking-wider hidden sm:table-cell cursor-pointer select-none"
+                    style={{ color: opsSort?.col === "usd" ? "#fff" : TEXT_MUTED, background: "transparent" }}
+                    onClick={() => toggleSort("usd")}
+                  >
+                    USD Value <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{sortIcon("usd")}</span>
+                  </th>
+                  <th
+                    className="text-[10px] sm:text-xs uppercase tracking-wider cursor-pointer select-none"
+                    style={{ color: opsSort?.col === "date" ? "#fff" : TEXT_MUTED, background: "transparent" }}
+                    onClick={() => toggleSort("date")}
+                  >
+                    Date <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{sortIcon("date")}</span>
+                  </th>
+                  <th
+                    className="text-[10px] sm:text-xs uppercase tracking-wider"
+                    style={{ color: TEXT_MUTED, background: "transparent" }}
+                  >
+                    Tx
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredOps.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-8" style={{ color: TEXT_DIM }}>
+                      No operations found
+                    </td>
+                  </tr>
+                ) : (
+                  filteredOps.slice((opsPage - 1) * opsPerPage, opsPage * opsPerPage).map((op, i) => (
+                    <tr key={i} style={{ borderBottom: `1px solid #111` }}>
+                      <td>
+                        <span
+                          className="badge badge-xs sm:badge-sm font-mono"
+                          style={{
+                            background: op.type === "StrategicBuy" ? "rgb(223 119 15 / 36%)" : `${badgeColor[op.type] ?? "#888"}40`,
+                            color: badgeColor[op.type] ?? "#888",
+                            border: "none",
+                            fontSize: "inherit",
+                          }}
+                        >
+                          {op.type === "StrategicBuy" ? "Str.Buy" : op.type === "StrategicSell" ? "Str.Sell" : op.type}
+                        </span>
+                      </td>
+                      <td className="font-mono text-white">
+                        {/* Desktop: amount + ROI sub-line for StrategicSell */}
+                        <span className="hidden sm:inline">
+                          <span>{op.amount}</span>
+                          {op.type === "StrategicSell" && op.roiPct !== undefined && (
+                            <span
+                              className="block text-[10px] mt-0.5 font-semibold"
+                              style={{ color: op.roiPct >= 0 ? "#43e397" : "#ff6b6b" }}
+                            >
+                              {op.roiPct >= 0 ? "+" : ""}
+                              {op.roiPct.toFixed(0)}% ROI
+                            </span>
+                          )}
+                        </span>
+                        {/* Mobile: tap to toggle between amount and USD */}
+                        <span className="sm:hidden cursor-pointer" onClick={() => setOpsShowUsd(prev => !prev)}>
+                          {opsShowUsd ? (
+                            <span style={{ color: TEXT_MUTED, fontWeight: 600 }}>{op.usdValue || "\u2014"}</span>
+                          ) : (
+                            <span>
+                              {compactAmount(op.amount)}
+                              {op.type === "StrategicSell" && op.roiPct !== undefined && (
+                                <span
+                                  className="block text-[9px] mt-0.5 font-semibold"
+                                  style={{ color: op.roiPct >= 0 ? "#43e397" : "#ff6b6b" }}
+                                >
+                                  {op.roiPct >= 0 ? "+" : ""}
+                                  {op.roiPct.toFixed(0)}% ROI
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </span>
+                      </td>
+                      <td className="hidden sm:table-cell" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
+                        {op.usdValue}
+                      </td>
+                      <td style={{ color: TEXT_DIM }}>{op.date}</td>
+                      <td>
+                        {op.txHash ? (
+                          <a
+                            href={`https://basescan.org/tx/${op.txHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline"
+                            style={{ color: GOLD }}
+                          >
+                            View ↗
+                          </a>
+                        ) : (
+                          <span style={{ color: TEXT_DIM }}>{"\u2014"}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {filteredOps.length > 0 &&
+            (() => {
+              const totalPages = Math.ceil(filteredOps.length / opsPerPage);
+              return (
+                <div
+                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
+                  style={{ borderTop: `1px solid ${CARD_BORDER}` }}
+                >
+                  <div className="flex items-center gap-1 text-xs" style={{ color: TEXT_DIM }}>
+                    <span>Show</span>
+                    {[10, 25, 50, 100].map(n => (
+                      <button
+                        key={n}
+                        onClick={() => {
+                          setOpsPerPage(n);
+                          setOpsPage(1);
+                        }}
+                        className="px-1.5 py-0.5 rounded"
+                        style={{
+                          color: opsPerPage === n ? "#fff" : TEXT_MUTED,
+                          background: opsPerPage === n ? "#ffffff15" : "transparent",
+                        }}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs" style={{ color: TEXT_MUTED }}>
+                    <span>
+                      Page {opsPage} of {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setOpsPage(p => Math.max(1, p - 1))}
+                      disabled={opsPage <= 1}
+                      className="px-2 py-0.5 rounded"
+                      style={{ color: opsPage <= 1 ? TEXT_DIM : "#fff", background: "#ffffff10" }}
+                    >
+                      ‹
+                    </button>
+                    <button
+                      onClick={() => setOpsPage(p => Math.min(totalPages, p + 1))}
+                      disabled={opsPage >= totalPages}
+                      className="px-2 py-0.5 rounded"
+                      style={{ color: opsPage >= totalPages ? TEXT_DIM : "#fff", background: "#ffffff10" }}
+                    >
+                      ›
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          <p className="sm:hidden px-4 text-[10px]" style={{ color: TEXT_DIM, marginTop: 0, marginBottom: "0.55rem" }}>
+            Tap amount to see USD value
+          </p>
+        </div>
+      </div>
+
+      {/* AMI Operations Chart — price line with every AMI op plotted on it */}
+      <div className="max-w-4xl w-full px-4 mb-8">
+        <SectionTitle>Activity on the Chart</SectionTitle>
+        <AmiOpsChart operations={(apiData?.operations ?? []) as AmiOpRow[]} />
+      </div>
+
       {/* Treasury Composition Chart — stacked area by asset category */}
       <div className="max-w-4xl w-full px-4 mb-8">
         <SectionTitle>Treasury Composition Over Time</SectionTitle>
@@ -3645,364 +4003,6 @@ const Home: NextPage = () => {
 
       {/* Permissionless Fee Burner — below BurnEngine */}
       <LegacyFeeBurnerPanel />
-
-      {/* Operations Table */}
-      <div ref={opsSectionRef} className="max-w-4xl w-full px-4 mb-8">
-        <div className="flex items-center justify-between" style={{ marginBottom: "-0.5rem" }}>
-          <SectionTitle>Onchain Activity</SectionTitle>
-          <div className="flex items-center gap-2" style={{ marginTop: "-1rem" }}>
-            <div className="flex rounded-md overflow-hidden" style={{ border: "1px solid #333" }}>
-              {(["all", "treasury"] as const).map(a => (
-                <button
-                  key={a}
-                  type="button"
-                  onClick={() => setOpsAuthorFilter(a)}
-                  className="text-[10px] px-2 py-1"
-                  style={{
-                    color: opsAuthorFilter === a ? "#fff" : TEXT_DIM,
-                    background: opsAuthorFilter === a ? "#ffffff14" : "transparent",
-                  }}
-                >
-                  {a === "all" ? "All" : "Only Treasury"}
-                </button>
-              ))}
-            </div>
-          {connectedAddress &&
-            apiData &&
-            (connectedAddress.toLowerCase() === apiData.ownerAddr?.toLowerCase() ||
-              connectedAddress.toLowerCase() === apiData.operatorAddr?.toLowerCase()) && (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => window.open("/api/export-operations-csv", "_blank")}
-                  className="btn btn-xs sm:btn-sm"
-                  style={{
-                    background: "transparent",
-                    border: `1px solid ${GOLD}`,
-                    color: GOLD,
-                  }}
-                >
-                  Export CSV
-                </button>
-                <button
-                  onClick={() => window.open("/api/export-operations", "_blank")}
-                  className="btn btn-xs sm:btn-sm"
-                  style={{
-                    background: "transparent",
-                    border: `1px solid ${GOLD}`,
-                    color: GOLD,
-                  }}
-                >
-                  Export Excel
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-        <div
-          className="rounded-xl text-xs sm:text-sm"
-          style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}`, overflow: "visible" }}
-        >
-          {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="table table-xs sm:table-sm ops-table" style={{ color: "#e8e8e8" }}>
-              <thead>
-                <tr style={{ borderBottom: `1px solid ${CARD_BORDER}`, height: "2.0rem" }}>
-                  <th
-                    className="text-[10px] sm:text-xs uppercase tracking-wider"
-                    style={{ color: TEXT_MUTED, background: "transparent" }}
-                  >
-                    <div ref={opsFilterRef} className="inline-flex items-center gap-1">
-                      Type
-                      <button
-                        onClick={() => setOpsFilterOpen(prev => !prev)}
-                        className="inline-flex items-center justify-center"
-                        style={{ color: (opsTypeFilter.size > 0 || opsTokenFilter.size > 0) ? GOLD : TEXT_MUTED }}
-                      >
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill={(opsTypeFilter.size > 0 || opsTokenFilter.size > 0) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>
-                      </button>
-                      {opsFilterOpen && (() => {
-                        const rect = opsFilterRef.current?.getBoundingClientRect();
-                        return (
-                          <div
-                            className="fixed rounded-lg shadow-xl py-2 px-3"
-                            style={{
-                              background: "#1a1a1a",
-                              border: `1px solid ${CARD_BORDER}`,
-                              minWidth: "280px",
-                              zIndex: 9999,
-                              top: rect ? rect.bottom + 4 : 0,
-                              left: rect ? rect.left : 0,
-                            }}
-                            onClick={e => e.stopPropagation()}
-                          >
-                          <div className="flex gap-5">
-                            {/* Left column: Types */}
-                            <div className="flex-1 min-w-0">
-                              <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: TEXT_DIM }}>Types</div>
-                              {[
-                                { v: "all", l: "All types" },
-                                { v: "buyback", l: "Buyback" },
-                                { v: "burn", l: "Burn" },
-                                { v: "rebalance", l: "Rebalance" },
-                                { v: "stake", l: "Stake" },
-                                { v: "burnengine", l: "BurnEngine" },
-                                { v: "feeclaim", l: "FeeClaim" },
-                                { v: "strategicbuy", l: "Str.Buy" },
-                                { v: "strategicsell", l: "Str.Sell" },
-                              ].map(({ v, l }) => {
-                                const isAll = v === "all";
-                                const selected = isAll ? opsTypeFilter.size === 0 : opsTypeFilter.has(v);
-                                return (
-                                  <button
-                                    key={v}
-                                    onClick={() => {
-                                      if (isAll) {
-                                        setOpsTypeFilter(new Set());
-                                      } else {
-                                        setOpsTypeFilter(prev => {
-                                          const next = new Set(prev);
-                                          if (next.has(v)) next.delete(v);
-                                          else next.add(v);
-                                          return next;
-                                        });
-                                      }
-                                      setOpsPage(1);
-                                    }}
-                                    className="w-full text-left py-1 text-xs hover:bg-[#333] flex items-center gap-2 rounded px-1"
-                                    style={{ color: selected ? (isAll ? GOLD : "#fff") : "#888" }}
-                                  >
-                                    <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: selected ? GOLD : "transparent" }} />
-                                    {l}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                            {/* Right column: Tokens */}
-                            <div className="flex-1 min-w-0">
-                              <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: TEXT_DIM }}>Tokens</div>
-                              <button
-                                onClick={() => { setOpsTokenFilter(new Set()); setOpsPage(1); }}
-                                className="w-full text-left py-1 text-xs hover:bg-[#333] flex items-center gap-2 rounded px-1"
-                                style={{ color: opsTokenFilter.size === 0 ? GOLD : "#888" }}
-                              >
-                                <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: opsTokenFilter.size === 0 ? GOLD : "transparent" }} />
-                                All tokens
-                              </button>
-                              {(() => {
-                                const tokenSet = new Set<string>();
-                                for (const op of allOpsForFilter) {
-                                  if (op.token) tokenSet.add(op.token);
-                                }
-                                tokenSet.delete("");
-                                tokenSet.delete("ETH");
-                                tokenSet.delete("WETH");
-                                tokenSet.delete("USDC");
-                                tokenSet.delete("TUSD2");
-                                const allTokens = Array.from(tokenSet).sort();
-                                return allTokens.map(t => {
-                                  const selected = opsTokenFilter.has(t);
-                                  return (
-                                    <button
-                                      key={t}
-                                      onClick={() => {
-                                        setOpsTokenFilter(prev => {
-                                          const next = new Set(prev);
-                                          if (next.has(t)) next.delete(t);
-                                          else next.add(t);
-                                          return next;
-                                        });
-                                        setOpsPage(1);
-                                      }}
-                                      className="w-full text-left py-1 text-xs hover:bg-[#333] flex items-center gap-2 rounded px-1"
-                                      style={{ color: selected ? "#fff" : "#888" }}
-                                    >
-                                      <span className="inline-block w-3 h-3 rounded-sm border shrink-0" style={{ borderColor: "#555", background: selected ? GOLD : "transparent" }} />
-                                      {t}
-                                    </button>
-                                  );
-                                });
-                              })()}
-                            </div>
-                          </div>
-                        </div>
-                        );
-                      })()}
-                    </div>
-                  </th>
-                  <th
-                    className="text-[10px] sm:text-xs uppercase tracking-wider cursor-pointer select-none"
-                    style={{ color: opsSort?.col === "amount" ? "#fff" : TEXT_MUTED, background: "transparent" }}
-                    onClick={() => toggleSort("amount")}
-                  >
-                    Amount <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{sortIcon("amount")}</span>
-                  </th>
-                  <th
-                    className="text-[10px] sm:text-xs uppercase tracking-wider hidden sm:table-cell cursor-pointer select-none"
-                    style={{ color: opsSort?.col === "usd" ? "#fff" : TEXT_MUTED, background: "transparent" }}
-                    onClick={() => toggleSort("usd")}
-                  >
-                    USD Value <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{sortIcon("usd")}</span>
-                  </th>
-                  <th
-                    className="text-[10px] sm:text-xs uppercase tracking-wider cursor-pointer select-none"
-                    style={{ color: opsSort?.col === "date" ? "#fff" : TEXT_MUTED, background: "transparent" }}
-                    onClick={() => toggleSort("date")}
-                  >
-                    Date <span className="text-[8px] sm:text-[10px] ml-0.5 opacity-60">{sortIcon("date")}</span>
-                  </th>
-                  <th
-                    className="text-[10px] sm:text-xs uppercase tracking-wider"
-                    style={{ color: TEXT_MUTED, background: "transparent" }}
-                  >
-                    Tx
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredOps.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="text-center py-8" style={{ color: TEXT_DIM }}>
-                      No operations found
-                    </td>
-                  </tr>
-                ) : (
-                  filteredOps.slice((opsPage - 1) * opsPerPage, opsPage * opsPerPage).map((op, i) => (
-                    <tr key={i} style={{ borderBottom: `1px solid #111` }}>
-                      <td>
-                        <span
-                          className="badge badge-xs sm:badge-sm font-mono"
-                          style={{
-                            background: op.type === "StrategicBuy" ? "rgb(223 119 15 / 36%)" : `${badgeColor[op.type] ?? "#888"}40`,
-                            color: badgeColor[op.type] ?? "#888",
-                            border: "none",
-                            fontSize: "inherit",
-                          }}
-                        >
-                          {op.type === "StrategicBuy" ? "Str.Buy" : op.type === "StrategicSell" ? "Str.Sell" : op.type}
-                        </span>
-                      </td>
-                      <td className="font-mono text-white">
-                        {/* Desktop: amount + ROI sub-line for StrategicSell */}
-                        <span className="hidden sm:inline">
-                          <span>{op.amount}</span>
-                          {op.type === "StrategicSell" && op.roiPct !== undefined && (
-                            <span
-                              className="block text-[10px] mt-0.5 font-semibold"
-                              style={{ color: op.roiPct >= 0 ? "#43e397" : "#ff6b6b" }}
-                            >
-                              {op.roiPct >= 0 ? "+" : ""}
-                              {op.roiPct.toFixed(0)}% ROI
-                            </span>
-                          )}
-                        </span>
-                        {/* Mobile: tap to toggle between amount and USD */}
-                        <span className="sm:hidden cursor-pointer" onClick={() => setOpsShowUsd(prev => !prev)}>
-                          {opsShowUsd ? (
-                            <span style={{ color: TEXT_MUTED, fontWeight: 600 }}>{op.usdValue || "\u2014"}</span>
-                          ) : (
-                            <span>
-                              {compactAmount(op.amount)}
-                              {op.type === "StrategicSell" && op.roiPct !== undefined && (
-                                <span
-                                  className="block text-[9px] mt-0.5 font-semibold"
-                                  style={{ color: op.roiPct >= 0 ? "#43e397" : "#ff6b6b" }}
-                                >
-                                  {op.roiPct >= 0 ? "+" : ""}
-                                  {op.roiPct.toFixed(0)}% ROI
-                                </span>
-                              )}
-                            </span>
-                          )}
-                        </span>
-                      </td>
-                      <td className="hidden sm:table-cell" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
-                        {op.usdValue}
-                      </td>
-                      <td style={{ color: TEXT_DIM }}>{op.date}</td>
-                      <td>
-                        {op.txHash ? (
-                          <a
-                            href={`https://basescan.org/tx/${op.txHash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="hover:underline"
-                            style={{ color: GOLD }}
-                          >
-                            View ↗
-                          </a>
-                        ) : (
-                          <span style={{ color: TEXT_DIM }}>{"\u2014"}</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {filteredOps.length > 0 &&
-            (() => {
-              const totalPages = Math.ceil(filteredOps.length / opsPerPage);
-              return (
-                <div
-                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
-                  style={{ borderTop: `1px solid ${CARD_BORDER}` }}
-                >
-                  <div className="flex items-center gap-1 text-xs" style={{ color: TEXT_DIM }}>
-                    <span>Show</span>
-                    {[10, 25, 50, 100].map(n => (
-                      <button
-                        key={n}
-                        onClick={() => {
-                          setOpsPerPage(n);
-                          setOpsPage(1);
-                        }}
-                        className="px-1.5 py-0.5 rounded"
-                        style={{
-                          color: opsPerPage === n ? "#fff" : TEXT_MUTED,
-                          background: opsPerPage === n ? "#ffffff15" : "transparent",
-                        }}
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2 text-xs" style={{ color: TEXT_MUTED }}>
-                    <span>
-                      Page {opsPage} of {totalPages}
-                    </span>
-                    <button
-                      onClick={() => setOpsPage(p => Math.max(1, p - 1))}
-                      disabled={opsPage <= 1}
-                      className="px-2 py-0.5 rounded"
-                      style={{ color: opsPage <= 1 ? TEXT_DIM : "#fff", background: "#ffffff10" }}
-                    >
-                      ‹
-                    </button>
-                    <button
-                      onClick={() => setOpsPage(p => Math.min(totalPages, p + 1))}
-                      disabled={opsPage >= totalPages}
-                      className="px-2 py-0.5 rounded"
-                      style={{ color: opsPage >= totalPages ? TEXT_DIM : "#fff", background: "#ffffff10" }}
-                    >
-                      ›
-                    </button>
-                  </div>
-                </div>
-              );
-            })()}
-          <p className="sm:hidden px-4 text-[10px]" style={{ color: TEXT_DIM, marginTop: 0, marginBottom: "0.55rem" }}>
-            Tap amount to see USD value
-          </p>
-        </div>
-      </div>
-
-      {/* AMI Operations Chart — price line with every AMI op plotted on it */}
-      <div className="max-w-4xl w-full px-4 mb-8">
-        <SectionTitle>Activity on the Chart</SectionTitle>
-        <AmiOpsChart operations={(apiData?.operations ?? []) as AmiOpRow[]} />
-      </div>
 
       {/* Owner-only panels */}
       {isOwner && (

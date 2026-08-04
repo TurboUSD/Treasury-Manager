@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 /**
- * backfill-chart.mjs — Reconstruye el estado histórico del gráfico
- * "Treasury Composition Over Time" (balances diarios por token de los 4
- * treasuries) escaneando TODOS los Transfer desde julio 2025, y lo guarda
- * en Supabase (treasury_cache, key='chart_history').
+ * backfill-chart.mjs v3 — "una foto por día"
  *
- * SE EJECUTA UNA SOLA VEZ. Después /api/treasury-data solo escanea el delta
- * desde el último bloque — rápido y sin timeouts en Vercel.
+ * Reconstruye el histórico del gráfico "Treasury Composition Over Time"
+ * leyendo los BALANCES REALES de cada token en los 4 treasuries a cierre de
+ * cada día (una sola petición RPC por día, vía Multicall3). Sin escaneo de
+ * logs, sin rangos, sin errores de "block range too large".
+ *
+ * ~1 petición por día desde feb-2026 (~185 en total). SE EJECUTA UNA VEZ.
+ * Después /api/treasury-data añade la foto del día en curso (1 petición/hora).
  *
  * Uso (desde dashboard/):  node scripts/backfill-chart.mjs
  * Env (.env.local): ANKR_RPC_URL, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -49,12 +51,13 @@ const TOKENS = [
   "0xf30Bf00edd0C22db54C9274B90D2A4C21FC09b07", // FELIX
 ];
 const USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
-const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-const GENESIS = 32_400_000; // ~2025-07-04 en Base
+const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11";
+const START_TS = 1769904000; // 2026-02-01 (la 1ª operación del treasury es del 18-mar-2026)
 const BLOCK_TIME = 2;
 
-const pad32 = a => "0x" + a.toLowerCase().replace("0x", "").padStart(64, "0");
+const pad32 = a => a.toLowerCase().replace("0x", "").padStart(64, "0");
 const hex = n => "0x" + n.toString(16);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 let rpcCalls = 0;
 
 async function rpc(method, params) {
@@ -69,73 +72,96 @@ async function rpc(method, params) {
   return j.result;
 }
 
+/* ── Multicall3.aggregate((address,bytes)[]) — codificación ABI manual ── */
+const BAL_SIG = "70a08231";
+const w = v => BigInt(v).toString(16).padStart(64, "0");
+
+function encodeAggregate(calls) {
+  const n = calls.length;
+  let s = w(0x20) + w(n);
+  for (let i = 0; i < n; i++) s += w(n * 32 + i * 0xa0);
+  for (const c of calls) {
+    const data = c.data; // 36 bytes (selector + address) → 72 hex chars
+    s += pad32(c.to);
+    s += w(0x40);
+    s += w(data.length / 2);
+    s += data.padEnd(128, "0");
+  }
+  return "0x252dba42" + s;
+}
+
+function decodeAggregate(hexOut, n) {
+  const buf = hexOut.replace("0x", "");
+  const word = i => buf.slice(i * 64, i * 64 + 64);
+  const arrBase = parseInt(word(1), 16) / 32; // índice de palabra de la longitud del array
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const off = parseInt(word(arrBase + 1 + i), 16);
+    const li = arrBase + 1 + off / 32;
+    const blen = parseInt(word(li), 16);
+    out.push(blen === 0 ? 0n : BigInt("0x" + word(li + 1)));
+  }
+  return out;
+}
+
 console.log("① Anclando bloques…");
 const latest = await rpc("eth_getBlockByNumber", ["latest", false]);
 const latestBn = parseInt(latest.number, 16);
 const latestTs = parseInt(latest.timestamp, 16);
-const tsOf = bn => latestTs - (latestBn - bn) * BLOCK_TIME;
-console.log(`   Rango: ${GENESIS} → ${latestBn}`);
+const bnOf = ts => latestBn - Math.round((latestTs - ts) / BLOCK_TIME);
 
-console.log("② Escaneando transfers de los treasuries (adaptativo)…");
-const treasuryTopics = TREASURIES.map(pad32);
-const logsAll = [];
+/* cierres de día UTC desde START_TS hasta ahora */
+const days = [];
+for (let ts = START_TS + 86399; ; ts += 86400) {
+  const t = Math.min(ts, latestTs);
+  days.push(t);
+  if (t === latestTs) break;
+}
+console.log(`   ${days.length} días (${new Date(START_TS * 1000).toISOString().slice(0, 10)} → hoy) · 1 petición por día`);
 
-async function scan(dir) {
-  /* dir: "in" (topic2 = treasury) | "out" (topic1 = treasury) */
-  const topics = dir === "in"
-    ? [TRANSFER_TOPIC, null, treasuryTopics]
-    : [TRANSFER_TOPIC, treasuryTopics];
-  let from = GENESIS;
-  let win = 500_000;
-  while (from <= latestBn) {
-    const to = Math.min(from + win - 1, latestBn);
+const calls = [];
+for (const tr of TREASURIES) for (const tok of TOKENS) calls.push({ to: tok, data: BAL_SIG + pad32(tr) });
+const callData = encodeAggregate(calls);
+
+console.log("② Leyendo balances diarios (Multicall3)…");
+const dailyMap = {};
+let running = {};
+const t0 = Date.now();
+
+for (let d = 0; d < days.length; d++) {
+  const ts = days[d];
+  const date = new Date(ts * 1000).toISOString().slice(0, 10);
+  let out;
+  for (let attempt = 0; ; attempt++) {
     try {
-      const logs = await rpc("eth_getLogs", [{
-        address: TOKENS, topics, fromBlock: hex(from), toBlock: hex(to),
-      }]);
-      for (const l of logs) logsAll.push({ ...l, __dir: dir });
-      from = to + 1;
-      win = Math.min(win * 2, 4_000_000);
-      const done = (((dir === "in" ? 0 : 0.5) + ((from - GENESIS) / (latestBn - GENESIS + 1)) / 2) * 100);
-      process.stdout.write(`\r  ${done.toFixed(1)}%  logs ${logsAll.length}  reqs ${rpcCalls}   `);
-    } catch {
-      win = Math.max(Math.floor(win / 3), 2000);
-      if (win === 2000 && to - from < 2500) throw new Error("rango mínimo falló — revisa el RPC");
+      out = await rpc("eth_call", [{ to: MULTICALL3, data: callData }, hex(bnOf(ts))]);
+      break;
+    } catch (e) {
+      if (attempt >= 4) throw new Error(`${date}: ${e.message}`);
+      process.stdout.write(`\n  ⚠ ${date}: ${e.message} — reintentando…\n`);
+      await sleep(1000 * (attempt + 1));
     }
   }
+  const vals = decodeAggregate(out, calls.length);
+  const bals = {};
+  vals.forEach((v, i) => {
+    const tok = TOKENS[i % TOKENS.length].toLowerCase();
+    const num = Number(v) / 10 ** (tok === USDC ? 6 : 18);
+    if (num > 0) bals[tok] = (bals[tok] || 0) + num;
+  });
+  if (Object.keys(bals).length > 0) {
+    dailyMap[date] = bals;
+    running = bals;
+  }
+  const prog = (d + 1) / days.length;
+  const elapsed = (Date.now() - t0) / 1000;
+  const eta = Math.round(elapsed / prog - elapsed);
+  process.stdout.write(`\r  ${(prog * 100).toFixed(1)}%  ${date}  reqs ${rpcCalls}  ETA ${Math.floor(eta / 60)}m${eta % 60}s   `);
 }
-await scan("in");
-await scan("out");
-console.log(`\n   ${logsAll.length} transfers`);
+const dayKeys = Object.keys(dailyMap).sort();
+console.log(`\n   ${dayKeys.length} días con balances (${dayKeys[0]} → ${dayKeys[dayKeys.length - 1]})`);
 
-console.log("③ Construyendo balances diarios…");
-const treasurySet = new Set(TREASURIES.map(a => a.toLowerCase()));
-const events = [];
-for (const l of logsAll) {
-  const token = l.address.toLowerCase();
-  const fromA = "0x" + l.topics[1].slice(26);
-  const toA = "0x" + l.topics[2].slice(26);
-  const dec = token === USDC ? 6 : 18;
-  const v = Number(BigInt(l.data)) / 10 ** dec;
-  if (!(v > 0)) continue;
-  const bn = parseInt(l.blockNumber, 16);
-  /* un transfer treasury→treasury cuenta -1 y +1 (aparece en ambos scans) */
-  if (l.__dir === "in" && treasurySet.has(toA)) events.push({ bn, token, v: +v, li: parseInt(l.logIndex, 16) });
-  if (l.__dir === "out" && treasurySet.has(fromA)) events.push({ bn, token, v: -v, li: parseInt(l.logIndex, 16) });
-}
-events.sort((a, b) => a.bn - b.bn || a.li - b.li);
-
-const running = {};
-const dailyMap = {};
-for (const e of events) {
-  running[e.token] = (running[e.token] || 0) + e.v;
-  const date = new Date(tsOf(e.bn) * 1000).toISOString().slice(0, 10);
-  dailyMap[date] = { ...running };
-}
-const days = Object.keys(dailyMap).sort();
-console.log(`   ${days.length} días con actividad (${days[0]} → ${days[days.length - 1]})`);
-
-console.log("④ Guardando estado en Supabase (treasury_cache · chart_history)…");
+console.log("③ Guardando estado en Supabase (treasury_cache · chart_history)…");
 const state = { lastBlock: latestBn, running, dailyMap, updatedAt: new Date().toISOString() };
 const res = await fetch(`${SB_URL}/rest/v1/treasury_cache?on_conflict=key`, {
   method: "POST",
@@ -143,5 +169,5 @@ const res = await fetch(`${SB_URL}/rest/v1/treasury_cache?on_conflict=key`, {
   body: JSON.stringify([{ key: "chart_history", data: state, updated_at: new Date().toISOString() }]),
 });
 if (!res.ok) { console.error("Supabase:", res.status, await res.text()); process.exit(1); }
-console.log(`✅ Completo. ${events.length} movimientos · ${rpcCalls} peticiones RPC.`);
-console.log("   Ahora despliega el route.ts actualizado: usará este estado y solo escaneará deltas.");
+console.log(`✅ Completo. ${days.length} días · ${rpcCalls} peticiones RPC.`);
+console.log("   Ahora commit + push del route.ts para que Vercel use este estado.");

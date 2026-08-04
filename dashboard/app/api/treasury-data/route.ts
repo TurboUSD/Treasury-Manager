@@ -832,83 +832,33 @@ export async function GET() {
       console.error(
         "[Chart] chart_history state missing — run `node scripts/backfill-chart.mjs` once. Chart will only show Today until then.",
       );
-    } else if (
-      BigInt(chartState.lastBlock) < currentBlock &&
-      (!chartState.updatedAt || Date.now() - new Date(chartState.updatedAt).getTime() >= CHART_SCAN_INTERVAL_MS)
-    ) {
-      const deltaFrom = BigInt(chartState.lastBlock) + 1n;
-      let scanOk = true;
-
-      // Adaptive log fetcher: tries the range in one call and bisects on RPC
-      // range/size errors. Logs (and flags) when a sub-range can't be fetched
-      // so we don't advance the cursor past unscanned blocks.
-      const getLogsAdaptive = async (
-        params: { address: `0x${string}`[]; args: { to?: `0x${string}`; from?: `0x${string}` } },
-        fromBlock: bigint,
-        toBlock: bigint,
+    } else if (!chartState.updatedAt || Date.now() - new Date(chartState.updatedAt).getTime() >= CHART_SCAN_INTERVAL_MS) {
+      // Hourly: refresh today's entry by reading the REAL balances of every
+      // token across the 4 treasuries in ONE multicall (a single RPC request).
+      // Exact by construction — no log scanning, nothing to miss or time out.
+      try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        out: any[],
-      ): Promise<void> => {
-        try {
-          const logs = await client.getLogs({
-            address: params.address,
-            event: transferEvent,
-            args: params.args,
-            fromBlock,
-            toBlock,
-          });
-          out.push(...logs);
-        } catch (e) {
-          if (toBlock - fromBlock < 5_000n) {
-            console.error(`[Chart] getLogs gave up on ${fromBlock}→${toBlock}:`, e);
-            scanOk = false;
-            return;
+        const balContracts: any = [];
+        for (const tAddr of treasuries) {
+          for (const tok of tokenAddrs) {
+            balContracts.push({ address: tok, abi: [erc20BalanceOf], functionName: "balanceOf", args: [tAddr] });
           }
-          const mid = (fromBlock + toBlock) / 2n;
-          await getLogsAdaptive(params, fromBlock, mid, out);
-          await getLogsAdaptive(params, mid + 1n, toBlock, out);
         }
-      };
+        const balResults = await client.multicall({ contracts: balContracts });
+        const todayBals: Record<string, number> = {};
+        balResults.forEach((r, i) => {
+          if (r.status !== "success") return;
+          const tokAddr = tokenAddrs[i % tokenAddrs.length].toLowerCase();
+          const info = tokenInfo[tokAddr];
+          const v = Number(formatUnits(r.result as bigint, info.dec));
+          if (v > 0) todayBals[tokAddr] = (todayBals[tokAddr] || 0) + v;
+        });
 
-      type LogEntry = { block: bigint; token: string; amount: bigint; dir: 1 | -1 };
-      const allLogs: LogEntry[] = [];
+        const todayDate = new Date(now * 1000).toISOString().slice(0, 10);
+        for (const k of Object.keys(running)) delete running[k];
+        Object.assign(running, todayBals);
+        dailyMap[todayDate] = { ...todayBals };
 
-      for (const tAddr of treasuries) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const inLogs: any[] = [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const outLogs: any[] = [];
-        await Promise.all([
-          getLogsAdaptive({ address: tokenAddrs, args: { to: tAddr as `0x${string}` } }, deltaFrom, currentBlock, inLogs),
-          getLogsAdaptive({ address: tokenAddrs, args: { from: tAddr as `0x${string}` } }, deltaFrom, currentBlock, outLogs),
-        ]);
-        for (const l of inLogs) {
-          if ((l.args as { value: bigint }).value)
-            allLogs.push({ block: l.blockNumber, token: l.address.toLowerCase(), amount: (l.args as { value: bigint }).value, dir: 1 });
-        }
-        for (const l of outLogs) {
-          if ((l.args as { value: bigint }).value)
-            allLogs.push({ block: l.blockNumber, token: l.address.toLowerCase(), amount: (l.args as { value: bigint }).value, dir: -1 });
-        }
-      }
-
-      allLogs.sort((a, b) => Number(a.block - b.block));
-
-      for (const log of allLogs) {
-        const info = tokenInfo[log.token];
-        if (!info) continue;
-        const v = Number(log.amount) / 10 ** info.dec;
-        running[log.token] = (running[log.token] || 0) + v * log.dir;
-
-        const blockDiff = Number(currentBlock - log.block);
-        const ts = now - blockDiff * 2;
-        const date = new Date(ts * 1000).toISOString().slice(0, 10);
-        dailyMap[date] = { ...running };
-      }
-
-      // Persist the advanced cursor ONLY if the whole delta was scanned —
-      // otherwise the next request retries the same range.
-      if (scanOk) {
         const { error: chartErr } = await sb.from("treasury_cache").upsert(
           {
             key: "chart_history",
@@ -918,6 +868,8 @@ export async function GET() {
           { onConflict: "key" },
         );
         if (chartErr) console.error("[Chart] chart_history upsert failed:", chartErr);
+      } catch (e) {
+        console.error("[Chart] today snapshot failed:", e);
       }
     }
 
