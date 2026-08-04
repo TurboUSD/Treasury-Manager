@@ -810,7 +810,9 @@ export async function GET() {
       lastBlock: number;
       running: Record<string, number>;
       dailyMap: Record<string, Record<string, number>>;
+      updatedAt?: string;
     };
+    const CHART_SCAN_INTERVAL_MS = 60 * 60 * 1000; // delta scan at most once per hour
     let chartState: ChartState | null = null;
     try {
       const { data: chartRow } = await sb
@@ -830,7 +832,10 @@ export async function GET() {
       console.error(
         "[Chart] chart_history state missing — run `node scripts/backfill-chart.mjs` once. Chart will only show Today until then.",
       );
-    } else if (BigInt(chartState.lastBlock) < currentBlock) {
+    } else if (
+      BigInt(chartState.lastBlock) < currentBlock &&
+      (!chartState.updatedAt || Date.now() - new Date(chartState.updatedAt).getTime() >= CHART_SCAN_INTERVAL_MS)
+    ) {
       const deltaFrom = BigInt(chartState.lastBlock) + 1n;
       let scanOk = true;
 
