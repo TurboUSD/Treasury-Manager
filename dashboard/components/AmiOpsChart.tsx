@@ -370,6 +370,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
   /* own daily candles + supply */
   useEffect(() => {
     let cancelled = false;
+    const loadWidgetData = () =>
     fetch("/api/widget-data", { headers: { accept: "application/json" } })
       .then(res => (res.ok ? res.json() : null))
       .then(j => {
@@ -397,8 +398,11 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
         if (j.cache?.updated_at) setCacheAge(Math.max(0, Math.round((Date.now() - Date.parse(j.cache.updated_at)) / 60000)));
       })
       .catch(() => undefined);
+    loadWidgetData();
+    const interval = setInterval(loadWidgetData, 5 * 60 * 1000); // igual que treasury-data en page.tsx
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, []);
 
