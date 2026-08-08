@@ -325,7 +325,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
   const [range, setRange] = useState("90D");
   const [rangeOpen, setRangeOpen] = useState(false);
   const [metric, setMetric] = useState<"price" | "mcap">("price");
-  const [opAuthor, setOpAuthor] = useState<"all" | "ami">("ami"); // el treasury muestra AMI por defecto
+  const [opAuthor, setOpAuthor] = useState<"all" | "ami">("all"); // por defecto se ven todas las operaciones
   const [ctype, setCtype] = useState<"line" | "candles">("line");
   const [supplyNow, setSupplyNow] = useState<number | null>(null);
   const [burnedNow, setBurnedNow] = useState<number>(0);
