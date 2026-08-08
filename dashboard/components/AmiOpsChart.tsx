@@ -888,7 +888,14 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
           </div>
         );
         return (
-          <div className="grid grid-cols-2 md:grid-cols-4 rounded-lg overflow-hidden mb-3" style={{ border: "1px solid #262626" }}>
+          <div
+            className="grid grid-cols-2 md:grid-cols-4 rounded-lg overflow-hidden mb-3"
+            style={{
+              border: "1px solid #262626",
+              fontFamily:
+                'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            }}
+          >
             {tile("₸USD burned", fmtAmt(burnedShown) + (px > 0 ? ` · ${fmtUsd(burnedShown * px)}` : ""), `${burnCount} burn${burnCount === 1 ? "" : "s"}`, "b", 0)}
             {tile("₸USD bought", fmtAmt(stats.bought) + (px > 0 ? ` · ${fmtUsd(stats.bought * px)}` : ""), `${stats.buys} buy${stats.buys === 1 ? "" : "s"}`, "c", 1)}
             {tile("₸USD staked", fmtAmt(stakedShown) + (px > 0 ? ` · ${fmtUsd(stakedShown * px)}` : ""), pct, "s", 2)}

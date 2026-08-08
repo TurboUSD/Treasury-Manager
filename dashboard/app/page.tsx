@@ -3427,7 +3427,7 @@ const Home: NextPage = () => {
                           {op.type === "StrategicBuy" ? "Str.Buy" : op.type === "StrategicSell" ? "Str.Sell" : op.type}
                         </span>
                       </td>
-                      <td className="font-mono text-white">
+                      <td className="text-white">
                         {/* Desktop: amount + ROI sub-line for StrategicSell */}
                         <span className="hidden sm:inline">
                           <span>{op.amount}</span>
