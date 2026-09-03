@@ -844,6 +844,78 @@ function StatCard({ title, value, subtitle, emoji, tooltip }: { title: React.Rea
   );
 }
 
+// Small "i" superscript that shows a tooltip on hover (desktop) or tap (mobile).
+function InfoTip({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  const isTouch = useRef(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent | TouchEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("touchstart", handler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("touchstart", handler);
+    };
+  }, [open]);
+
+  return (
+    <span ref={ref} className="relative inline-block align-super ml-1" style={{ lineHeight: 0 }}>
+      <button
+        type="button"
+        aria-label="More info"
+        onTouchStart={() => { isTouch.current = true; }}
+        onClick={e => { e.stopPropagation(); setOpen(prev => !prev); }}
+        onMouseEnter={() => { if (!isTouch.current) setOpen(true); }}
+        onMouseLeave={() => { if (!isTouch.current) setOpen(false); isTouch.current = false; }}
+        className="inline-flex items-center justify-center rounded-full select-none"
+        style={{
+          width: 12,
+          height: 12,
+          fontSize: 8,
+          fontWeight: 700,
+          fontStyle: "italic",
+          fontFamily: "Georgia, serif",
+          color: TEXT_MUTED,
+          border: `1px solid ${TEXT_MUTED}`,
+          background: "transparent",
+          cursor: "pointer",
+          padding: 0,
+          lineHeight: 1,
+        }}
+      >
+        i
+      </button>
+      {open && (
+        <div
+          className="absolute rounded-lg z-50"
+          style={{
+            bottom: "calc(100% + 8px)",
+            right: 0,
+            width: 240,
+            background: "#111",
+            border: "1px solid #0f5a2a",
+            borderRadius: 10,
+            padding: "10px 14px",
+            fontSize: 12,
+            lineHeight: 1.5,
+            color: "#ccc",
+            textAlign: "left",
+            whiteSpace: "normal",
+            boxShadow: "0 8px 20px rgba(0,0,0,0.5)",
+          }}
+        >
+          {children}
+        </div>
+      )}
+    </span>
+  );
+}
+
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <h2 className="text-sm font-semibold mb-4 uppercase tracking-widest" style={{ color: GOLD }}>
@@ -3189,6 +3261,18 @@ const Home: NextPage = () => {
                   <div className="flex items-center justify-end mt-2">
                     <span className="text-[10px] sm:text-xs" style={{ color: TEXT_MUTED }}>
                       {fmtBigRound(row.tusdQuoted)} ₸USD{row.priceImpactPct > 0 ? ` → +${Math.round(row.priceImpactPct)}%` : ""}
+                      <InfoTip>
+                        <span style={{ color: "#fff", fontWeight: 600 }}>{fmtBigRound(row.tusdQuoted)} ₸USD</span> is the ₸USD
+                        supply AMI will buy back if {row.ticker} reaches a $100M market cap (75% of the position, swapped WETH → ₸USD
+                        through the Uniswap pool).
+                        {row.priceImpactPct > 0 && (
+                          <>
+                            {" "}
+                            <span style={{ color: "#fff", fontWeight: 600 }}>+{Math.round(row.priceImpactPct)}%</span> is the estimated
+                            ₸USD price increase that buyback would cause at current liquidity.
+                          </>
+                        )}
+                      </InfoTip>
                     </span>
                   </div>
                 </div>
