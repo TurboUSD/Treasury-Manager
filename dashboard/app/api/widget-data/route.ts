@@ -73,27 +73,13 @@ async function refreshCandles(sb: any, wethPriceUsd: number) {
   const to = Math.min(latestBn, from + 1_000_000); // backlog acotado; el resto en la siguiente llamada
   const tsOf = (bn: number) => latestTs - (latestBn - bn) * BLOCK_TIME;
 
-  // Si el proveedor RPC rechaza el rango (demasiado ancho), lo partimos por la mitad
-  // y reintentamos, en vez de abandonar del todo — así el cursor SIEMPRE avanza algo
-  // en cada invocación y no se queda atascado indefinidamente.
-  async function getLogsResilient(fromBn: number, toBn: number): Promise<{ blockNumber: string; data: string }[]> {
-    try {
-      return await rpc("eth_getLogs", [
-        { address: POOL, topics: [SWAP_TOPIC], fromBlock: "0x" + fromBn.toString(16), toBlock: "0x" + toBn.toString(16) },
-      ]);
-    } catch {
-      if (toBn <= fromBn) return []; // rango mínimo y sigue fallando: nos rendimos en este bloque concreto
-      const mid = fromBn + Math.floor((toBn - fromBn) / 2);
-      const [a, b] = await Promise.all([getLogsResilient(fromBn, mid), getLogsResilient(mid + 1, toBn)]);
-      return [...a, ...b];
-    }
-  }
-
   let logs: { blockNumber: string; data: string }[] = [];
   try {
-    logs = await getLogsResilient(from, to);
+    logs = await rpc("eth_getLogs", [
+      { address: POOL, topics: [SWAP_TOPIC], fromBlock: "0x" + from.toString(16), toBlock: "0x" + to.toString(16) },
+    ]);
   } catch {
-    return; // fallo total incluso partiendo el rango: se reintenta en la siguiente invocación
+    return; // rango demasiado denso: se reintenta en la siguiente invocación
   }
 
   // última vela guardada (para open/carry-forward)

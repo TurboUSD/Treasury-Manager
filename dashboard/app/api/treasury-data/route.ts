@@ -21,9 +21,16 @@ const TUSD_POOL = "0xd013725b904e76394A3aB0334Da306C505D778F8";
 const USDC_WETH_POOL = "0xd0b53D9277642d899DF5C87A3966A349A798F224";
 const STATE_VIEW = "0xA3c0c9b65baD0b08107Aa264b0f3dB444b867A71";
 const BURN_ENGINE = "0x022688aDcDc24c648F4efBa76e42CD16BD0863AB";
-const LEGACY_FEE_SOURCE = "0x1eaf444ebDf6495C57aD52A04C61521bBf564ace";
-const LP_FEE_SOURCE = "0x33e2Eda238edcF470309b8c6D228986A1204c8f9";
-const LEGACY_FEE_CLAIMER = "0x2c857A891338fe17D86651B7B78C59c96e274246"; // Permissionless: claims both legacy + LP fees
+const LEGACY_FEE_SOURCE = "0x1eaf444ebDf6495C57aD52A04C61521bBf564ace"; // Gnosis Safe holding legacy (Clanker v0) ₸USD fees
+const LP_FEE_SOURCE = "0x33e2Eda238edcF470309b8c6D228986A1204c8f9"; // Clanker v3.1 LpLockerv2 — owns the ₸USD/WETH V3 position NFT
+const LEGACY_FEE_CLAIMER = "0x2c857A891338fe17D86651B7B78C59c96e274246"; // LegacyFeeBurner — permissionless claimLegacyAndBurn()
+// Uniswap V3 NonfungiblePositionManager (Base) + the ₸USD/WETH LP position locked by Clanker.
+// LP fees are NOT held by the locker: they accrue inside this position until collect() is called,
+// so "pending LP fees" must be read by simulating collect() — balanceOf(locker) is always ~0.
+const V3_POSITION_MANAGER = "0x03a520b32C04BF3bEEf7BEb72E919cf822Ed34f1";
+const TUSD_LP_TOKEN_ID = 3480212n;
+// LpLockerv2.tokenRewards(tokenId): creatorReward = 80 → BurnEngine receives 80% of collected fees
+const BURN_ENGINE_LP_SHARE_BPS = 8000n;
 const STAKING_CONTRACT = "0x2a70a42BC0524aBCA9Bff59a51E7aAdB575DC89A";
 const LIQUID_STAKING_CONTRACT = "0x2958489b3132f0c9B04d499C21017a8289B021bc";
 
@@ -63,14 +70,36 @@ const erc20BalanceOf = parseAbiItem("function balanceOf(address) view returns (u
 const erc20TotalSupply = parseAbiItem("function totalSupply() view returns (uint256)");
 const slot0Abi = parseAbiItem("function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)");
 const stateViewGetSlot0 = parseAbiItem("function getSlot0(bytes32 poolId) view returns (uint160 sqrtPriceX96, int24 tick, uint24 protocolFee, uint24 lpFee)");
-const burnEngineGetStatus = parseAbiItem("function getStatus() view returns (uint256 totalBurned, uint256 lastCycleTime, uint256 totalCycles)");
+// BurnEngineV2 (0x0226…63AB) — 6 outputs
+const burnEngineGetStatus = parseAbiItem("function getStatus() view returns (uint256 totalBurned, uint256 lastCycleTime, uint256 totalCycles, uint256 wethBalance, uint256 tusdBalance, uint256 wethRemaining)");
+const npmCollectAbi = [{
+  name: "collect" as const,
+  type: "function" as const,
+  stateMutability: "nonpayable" as const,
+  inputs: [{
+    name: "params" as const,
+    type: "tuple" as const,
+    components: [
+      { name: "tokenId" as const, type: "uint256" as const },
+      { name: "recipient" as const, type: "address" as const },
+      { name: "amount0Max" as const, type: "uint128" as const },
+      { name: "amount1Max" as const, type: "uint128" as const },
+    ],
+  }],
+  outputs: [
+    { name: "amount0" as const, type: "uint256" as const },
+    { name: "amount1" as const, type: "uint256" as const },
+  ],
+}] as const;
 const ownerAbi = parseAbiItem("function owner() view returns (address)");
 const operatorAbi = parseAbiItem("function authorizedOperator() view returns (address)");
 
 const poolFeeAbi = parseAbiItem("function fee() view returns (uint24)");
 
 const transferEvent = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
-const burnEngineCycleEvent = parseAbiItem("event CycleExecuted(uint256 wethClaimed, uint256 tusdClaimed, uint256 wethSwapped, uint256 tusdFromSwap, uint256 totalTusdBurned, uint256 totalBurnedAllTime, uint256 timestamp)");
+// BurnEngineV2 event has 8 fields (wethRemaining added). The topic0 must match the deployed
+// contract or the scanner silently finds 0 events.
+const burnEngineCycleEvent = parseAbiItem("event CycleExecuted(uint256 wethClaimed, uint256 tusdClaimed, uint256 wethSwapped, uint256 wethRemaining, uint256 tusdFromSwap, uint256 totalTusdBurned, uint256 totalBurnedAllTime, uint256 timestamp)");
 
 // QuoterV2 on Base — marked as view so viem uses eth_call (standard Quoter pattern)
 const QUOTER_V2 = "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a";
@@ -264,10 +293,10 @@ export async function GET() {
       { address: TUSD as `0x${string}`, abi: [erc20BalanceOf], functionName: "balanceOf", args: [STAKING_CONTRACT as `0x${string}`] },
       // 11: Legacy fee TUSD pending
       { address: TUSD as `0x${string}`, abi: [erc20BalanceOf], functionName: "balanceOf", args: [LEGACY_FEE_SOURCE as `0x${string}`] },
-      // 12: LP fee TUSD pending
-      { address: TUSD as `0x${string}`, abi: [erc20BalanceOf], functionName: "balanceOf", args: [LP_FEE_SOURCE as `0x${string}`] },
-      // 13: LP fee WETH pending
-      { address: WETH_ADDR as `0x${string}`, abi: [erc20BalanceOf], functionName: "balanceOf", args: [LP_FEE_SOURCE as `0x${string}`] },
+      // 12: LP fee TUSD already sitting in BurnEngine (claimed but not yet burned — normally 0)
+      { address: TUSD as `0x${string}`, abi: [erc20BalanceOf], functionName: "balanceOf", args: [BURN_ENGINE as `0x${string}`] },
+      // 13: WETH already sitting in BurnEngine (wethRemaining from chunked swaps — normally 0)
+      { address: WETH_ADDR as `0x${string}`, abi: [erc20BalanceOf], functionName: "balanceOf", args: [BURN_ENGINE as `0x${string}`] },
       // 14-20: Strategic token balances
       ...STRATEGIC_TOKENS.map(t => ({
         address: t.address as `0x${string}`,
@@ -304,7 +333,28 @@ export async function GET() {
       { address: TUSD as `0x${string}`, abi: [erc20BalanceOf] as const, functionName: "balanceOf" as const, args: [LIQUID_STAKING_CONTRACT as `0x${string}`] },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ] as any;
-    const results = await client.multicall({ contracts });
+    // Simulate collect() on the locked V3 position (from = locker, who owns the NFT) to get the
+    // real uncollected LP fees. Cannot go in the multicall because it needs a specific `from`.
+    const lpCollectPromise = client
+      .simulateContract({
+        address: V3_POSITION_MANAGER as `0x${string}`,
+        abi: npmCollectAbi,
+        functionName: "collect",
+        args: [{
+          tokenId: TUSD_LP_TOKEN_ID,
+          recipient: LP_FEE_SOURCE as `0x${string}`,
+          amount0Max: 2n ** 128n - 1n,
+          amount1Max: 2n ** 128n - 1n,
+        }],
+        account: LP_FEE_SOURCE as `0x${string}`,
+      })
+      .then(r => r.result as readonly [bigint, bigint])
+      .catch(e => {
+        console.error("[PendingFees] collect() simulation failed:", e);
+        return null;
+      });
+
+    const [results, lpCollect] = await Promise.all([client.multicall({ contracts }), lpCollectPromise]);
 
     // Extract results
     const val = (i: number) => (results[i]?.status === "success" ? results[i].result : null);
@@ -316,13 +366,18 @@ export async function GET() {
     const tusdBurned = val(4) as bigint | null;
     const usdcWethSlot0 = val(5) as readonly [bigint, number, number, number, number, number, boolean] | null;
     const tusdPoolSlot0 = val(6) as readonly [bigint, number, number, number, number, number, boolean] | null;
-    const burnStatus = val(7) as readonly [bigint, bigint, bigint] | null;
+    const burnStatus = val(7) as readonly [bigint, bigint, bigint, bigint, bigint, bigint] | null;
     const ownerAddr = val(8) as string | null;
     const operatorAddr = val(9) as string | null;
     const tusdStakedBal = val(10) as bigint | null;
     const legacyTusdPending = val(11) as bigint | null;
-    const lpTusdPending = val(12) as bigint | null;
-    const lpWethPending = val(13) as bigint | null;
+    const engineTusdHeld = (val(12) as bigint | null) ?? 0n;
+    const engineWethHeld = (val(13) as bigint | null) ?? 0n;
+    // Position is token0 = ₸USD, token1 = WETH. BurnEngine gets its creator share (80%).
+    const lpTusdUncollected = lpCollect ? lpCollect[0] : 0n;
+    const lpWethUncollected = lpCollect ? lpCollect[1] : 0n;
+    const lpTusdPending = (lpTusdUncollected * BURN_ENGINE_LP_SHARE_BPS) / 10000n + engineTusdHeld;
+    const lpWethPending = (lpWethUncollected * BURN_ENGINE_LP_SHARE_BPS) / 10000n + engineWethHeld;
     const tusdLiquidStakedBal = val(38) as bigint | null;
 
     // Strategic balances (indices 14-20)
@@ -377,8 +432,13 @@ export async function GET() {
     const tusdBurnedNum = tusdBurned ? Number(formatEther(tusdBurned)) : 0;
     const tusdStakedNum = tusdStakedBal ? Number(formatEther(tusdStakedBal)) : 0;
     const tusdLiquidStakedNum = tusdLiquidStakedBal ? Number(formatEther(tusdLiquidStakedBal)) : 0;
-    const pendingTusd = (legacyTusdPending ? Number(formatEther(legacyTusdPending)) : 0) + (lpTusdPending ? Number(formatEther(lpTusdPending)) : 0);
-    const pendingWeth = lpWethPending ? Number(formatEther(lpWethPending)) : 0;
+    const pendingLegacyTusd = legacyTusdPending ? Number(formatEther(legacyTusdPending)) : 0;
+    const pendingLpTusd = Number(formatEther(lpTusdPending));
+    const pendingTusd = pendingLegacyTusd + pendingLpTusd;
+    const pendingWeth = Number(formatEther(lpWethPending));
+    // Gross uncollected fees in the LP position (100%, before the 80/20 creator/interfacer split)
+    const lpUncollectedTusd = Number(formatEther(lpTusdUncollected));
+    const lpUncollectedWeth = Number(formatEther(lpWethUncollected));
 
     const engineBurned = burnStatus ? Number(formatEther(burnStatus[0])) : 0;
     const engineCycles = burnStatus ? Number(burnStatus[2]) : 0;
@@ -548,7 +608,7 @@ export async function GET() {
 
           const args = log.args as {
             wethClaimed: bigint; tusdClaimed: bigint;
-            wethSwapped: bigint; tusdFromSwap: bigint;
+            wethSwapped: bigint; wethRemaining: bigint; tusdFromSwap: bigint;
             totalTusdBurned: bigint; totalBurnedAllTime: bigint;
             timestamp: bigint;
           };
@@ -928,6 +988,10 @@ export async function GET() {
       tusdLiquidStakedNum,
       pendingTusd,
       pendingWeth,
+      pendingLegacyTusd,
+      pendingLpTusd,
+      lpUncollectedTusd,
+      lpUncollectedWeth,
       engineBurned,
       engineCycles,
       engineLastCycleTs,

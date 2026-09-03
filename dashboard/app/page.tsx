@@ -127,9 +127,11 @@ const burnEngineAbi = [
   },
 ] as const;
 
+// LegacyFeeBurner (0x2c85…4246): the only public entrypoint is claimLegacyAndBurn()
+// (pulls legacy ₸USD from the Safe via the Clanker factory, then runs BurnEngine.executeFullCycle()).
 const legacyFeeClaimerAbi = [
   {
-    name: "claimAndBurn",
+    name: "claimLegacyAndBurn",
     type: "function",
     stateMutability: "nonpayable",
     inputs: [],
@@ -897,7 +899,7 @@ function LegacyFeeBurnerPanel() {
     writeClaimBurn({
       address: LEGACY_FEE_CLAIMER,
       abi: legacyFeeClaimerAbi,
-      functionName: "claimAndBurn",
+      functionName: "claimLegacyAndBurn",
       chainId: base.id,
     });
   };
@@ -2009,6 +2011,10 @@ const Home: NextPage = () => {
     tusdLiquidStakedNum: number;
     pendingTusd: number;
     pendingWeth: number;
+    pendingLegacyTusd?: number;
+    pendingLpTusd?: number;
+    lpUncollectedTusd?: number;
+    lpUncollectedWeth?: number;
     engineBurned: number;
     engineCycles: number;
     engineLastCycleTs: number | null;
@@ -3427,7 +3433,7 @@ const Home: NextPage = () => {
                           {op.type === "StrategicBuy" ? "Str.Buy" : op.type === "StrategicSell" ? "Str.Sell" : op.type}
                         </span>
                       </td>
-                      <td className="text-white">
+                      <td className="font-mono text-white">
                         {/* Desktop: amount + ROI sub-line for StrategicSell */}
                         <span className="hidden sm:inline">
                           <span>{op.amount}</span>
@@ -3982,7 +3988,7 @@ const Home: NextPage = () => {
             value={pendingTotalUsd > 0.01 ? fmtUsd(pendingTotalUsd) : "$0.00"}
             subtitle={
               pendingTusd > 0 || pendingWeth > 0
-                ? `${fmtBig(pendingTusd)} \u20B8USD · ${pendingWeth.toFixed(2)} WETH`
+                ? `${fmtBig(pendingTusd)} \u20B8USD · ${pendingWeth.toFixed(3)} WETH`
                 : "No fees to claim"
             }
           />
