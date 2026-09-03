@@ -2726,12 +2726,12 @@ const Home: NextPage = () => {
             }
           />
           <StatCard
-            title={`\u20B8USD Buybacks`}
+            title={<span className="whitespace-nowrap tracking-tight sm:tracking-wider">{"\u20B8"}USD Buybacks</span>}
             value={fmtBig(totalBuybackTusd)}
             subtitle={
               <>
                 <h3
-                  className="text-[10px] sm:text-xs font-medium uppercase tracking-wider"
+                  className="text-[10px] sm:text-xs font-medium uppercase whitespace-nowrap tracking-tight sm:tracking-wider"
                   style={{ color: TEXT_MUTED, fontWeight: 600 }}
                 >
                   Str. Token Buys
@@ -3988,7 +3988,7 @@ const Home: NextPage = () => {
             value={pendingTotalUsd > 0.01 ? fmtUsd(pendingTotalUsd) : "$0.00"}
             subtitle={
               pendingTusd > 0 || pendingWeth > 0
-                ? `${fmtBig(pendingTusd)} \u20B8USD · ${pendingWeth.toFixed(3)} WETH`
+                ? <>{fmtBig(pendingTusd)} {"\u20B8"}USD<br />{pendingWeth.toFixed(3)} WETH</>
                 : "No fees to claim"
             }
           />
@@ -3996,7 +3996,7 @@ const Home: NextPage = () => {
           <StatCard
             title="Total Claimed"
             value={totalClaimedTusd > 0 ? fmtUsd(totalClaimedTusdUsd) : "$0.00"}
-            subtitle={`${fmtBig(totalClaimedTusd)} \u20B8USD · ${totalClaimedWeth.toFixed(2)} WETH`}
+            subtitle={<>{fmtBig(totalClaimedTusd)} {"\u20B8"}USD<br />{totalClaimedWeth.toFixed(2)} WETH</>}
           />
           {/* Card 4: Cycles */}
           <StatCard
