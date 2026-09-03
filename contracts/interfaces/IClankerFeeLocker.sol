@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+/// @notice Minimal interface for the Clanker v3.1 factory (0x2A787b2362021cC3eEa3C24C4748a6cD5B687382 on Base).
+/// @dev Despite the name, this is NOT a fee-locker with claimable balances: `claimRewards(token)` makes
+///      the LpLockerv2 collect the fees accrued inside the Uniswap V3 position and forward the
+///      creator/interfacer shares directly. There is no view to query pending fees — simulate
+///      NonfungiblePositionManager.collect() from the locker instead.
 interface IClankerFeeLocker {
-    /// @notice Claim accumulated fees for msg.sender
-    /// @param recipient Address to receive the claimed tokens
-    /// @param token Token address to claim
-    function claim(address recipient, address token) external;
-
-    /// @notice Check claimable balance for a fee owner
-    /// @param feeOwner The fee owner address
-    /// @param token The token address
-    /// @return balance The claimable balance
-    function feesToClaim(address feeOwner, address token) external view returns (uint256 balance);
+    function claimRewards(address token) external;
 }
