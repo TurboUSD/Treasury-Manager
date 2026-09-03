@@ -845,7 +845,7 @@ function StatCard({ title, value, subtitle, emoji, tooltip }: { title: React.Rea
 }
 
 // Small "i" superscript that shows a tooltip on hover (desktop) or tap (mobile).
-function InfoTip({ children }: { children: React.ReactNode }) {
+function InfoTip({ children, align = "right" }: { children: React.ReactNode; align?: "left" | "right" }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   const isTouch = useRef(false);
@@ -895,7 +895,7 @@ function InfoTip({ children }: { children: React.ReactNode }) {
           className="absolute rounded-lg z-50"
           style={{
             bottom: "calc(100% + 8px)",
-            right: 0,
+            ...(align === "right" ? { right: 0 } : { left: 0 }),
             width: 240,
             background: "#111",
             border: "1px solid #0f5a2a",
@@ -3136,7 +3136,7 @@ const Home: NextPage = () => {
             >
               {/* Subtitle — single line, full width on mobile */}
               <p className="text-[10px] sm:text-xs uppercase tracking-wider mb-1.5 whitespace-nowrap overflow-hidden text-ellipsis" style={{ color: TEXT_MUTED, marginTop: 0 }}>
-                Potential buyback if all tokens reach $100M
+                Buyback if all strategic tokens reach $100M
               </p>
 
               {/* Desktop: text left + donuts right, centered */}
@@ -3169,7 +3169,14 @@ const Home: NextPage = () => {
                         <span className="text-sm font-bold text-white">{pctOfSupply.toFixed(1)}%</span>
                       </div>
                     </div>
-                    <span className="text-xs mt-1" style={{ color: TEXT_DIM }}>Total supply</span>
+                    <span className="text-xs mt-1 whitespace-nowrap" style={{ color: TEXT_DIM }}>
+                      of circulating supply
+                      <InfoTip align="left">
+                        <span style={{ color: "#fff", fontWeight: 600 }}>{pctOfSupply.toFixed(1)}%</span> of all circulating ₸USD
+                        ({fmtBigRound(circulatingSupply)} ₸USD). That is the share of the entire supply AMI would buy back if every
+                        strategic token reached $100M.
+                      </InfoTip>
+                    </span>
                   </div>
                   {/* Donut 2: % of Uniswap pool */}
                   <div className="flex flex-col items-center">
@@ -3182,7 +3189,14 @@ const Home: NextPage = () => {
                         <span className="text-sm font-bold text-white">{pctOfPool.toFixed(1)}%</span>
                       </div>
                     </div>
-                    <span className="text-xs mt-1" style={{ color: TEXT_DIM }}>Uniswap pool</span>
+                    <span className="text-xs mt-1 whitespace-nowrap" style={{ color: TEXT_DIM }}>
+                      of Uniswap liquidity
+                      <InfoTip align="right">
+                        <span style={{ color: "#fff", fontWeight: 600 }}>{pctOfPool.toFixed(1)}%</span> of the ₸USD currently available
+                        in the Uniswap pool ({fmtBigRound(tusdPoolBal)} ₸USD) would be bought. The bigger this share, the stronger the
+                        price impact — that is where the "+% on price" comes from.
+                      </InfoTip>
+                    </span>
                   </div>
                 </div>
               </div>
@@ -3217,7 +3231,14 @@ const Home: NextPage = () => {
                         <span className="text-xs font-bold text-white">{pctOfSupply.toFixed(1)}%</span>
                       </div>
                     </div>
-                    <span className="text-[10px] mt-1" style={{ color: TEXT_DIM }}>Total supply</span>
+                    <span className="text-[10px] mt-1 whitespace-nowrap" style={{ color: TEXT_DIM }}>
+                      of circulating supply
+                      <InfoTip align="left">
+                        <span style={{ color: "#fff", fontWeight: 600 }}>{pctOfSupply.toFixed(1)}%</span> of all circulating ₸USD
+                        ({fmtBigRound(circulatingSupply)} ₸USD). That is the share of the entire supply AMI would buy back if every
+                        strategic token reached $100M.
+                      </InfoTip>
+                    </span>
                   </div>
                   <div className="flex flex-col items-center">
                     <div className="relative w-[100px] h-[100px]">
@@ -3229,7 +3250,14 @@ const Home: NextPage = () => {
                         <span className="text-xs font-bold text-white">{pctOfPool.toFixed(1)}%</span>
                       </div>
                     </div>
-                    <span className="text-[10px] mt-1" style={{ color: TEXT_DIM }}>Uniswap pool</span>
+                    <span className="text-[10px] mt-1 whitespace-nowrap" style={{ color: TEXT_DIM }}>
+                      of Uniswap liquidity
+                      <InfoTip align="right">
+                        <span style={{ color: "#fff", fontWeight: 600 }}>{pctOfPool.toFixed(1)}%</span> of the ₸USD currently available
+                        in the Uniswap pool ({fmtBigRound(tusdPoolBal)} ₸USD) would be bought. The bigger this share, the stronger the
+                        price impact — that is where the "+% on price" comes from.
+                      </InfoTip>
+                    </span>
                   </div>
                 </div>
               </div>
@@ -3237,7 +3265,7 @@ const Home: NextPage = () => {
 
             {/* Progress bars — 2 columns */}
             <div className="grid grid-cols-2 gap-3">
-              {fwData.map(row => (
+              {fwData.map((row, i) => (
                 <div
                   key={row.ticker}
                   className="rounded-xl p-3 sm:p-4"
@@ -3261,10 +3289,9 @@ const Home: NextPage = () => {
                   <div className="flex items-center justify-end mt-2">
                     <span className="text-[10px] sm:text-xs" style={{ color: TEXT_MUTED }}>
                       {fmtBigRound(row.tusdQuoted)} ₸USD{row.priceImpactPct > 0 ? ` → +${Math.round(row.priceImpactPct)}%` : ""}
-                      <InfoTip>
-                        <span style={{ color: "#fff", fontWeight: 600 }}>{fmtBigRound(row.tusdQuoted)} ₸USD</span> is the ₸USD
-                        supply AMI will buy back if {row.ticker} reaches a $100M market cap (75% of the position, swapped WETH → ₸USD
-                        through the Uniswap pool).
+                      <InfoTip align={i % 2 === 0 ? "left" : "right"}>
+                        <span style={{ color: "#fff", fontWeight: 600 }}>{fmtBigRound(row.tusdQuoted)} ₸USD</span> is the amount of
+                        ₸USD AMI will buy back if {row.ticker} reaches a $100M market cap.
                         {row.priceImpactPct > 0 && (
                           <>
                             {" "}
