@@ -2251,12 +2251,42 @@ const Home: NextPage = () => {
   const pendingWethUsd = pendingWeth * wethPriceUsd;
   const pendingTotalUsd = pendingTusdUsd + pendingWethUsd;
 
-  const totalClaimedTusd = HISTORICAL_OPS_RAW.filter(op => op.type === "BurnEngine").reduce(
+  // Total Claimed = legacy hardcoded BurnEngine entries + live FeeClaim rows
+  // from the operations table (written by AMI 9000 and the log scanner).
+  // Previously this only summed the static HISTORICAL_OPS_RAW seed, so it
+  // showed a tiny stale figure and never updated after new claims.
+  const legacyClaimedTusd = HISTORICAL_OPS_RAW.filter(op => op.type === "BurnEngine").reduce(
     (sum, op) => sum + op.tusdAmount,
     0,
   );
-  const totalClaimedTusdUsd = totalClaimedTusd * tusdPriceUsd;
-  const totalClaimedWeth = 0;
+  let dbClaimedTusd = 0;
+  let dbClaimedWeth = 0;
+  let lastClaimTs = 0;
+  const hardcodedClaimTxs = new Set(
+    HISTORICAL_OPS_RAW.filter(op => op.type === "BurnEngine").map(op => op.txHash),
+  );
+  for (const op of apiData?.operations ?? []) {
+    if (op.op_type !== "FeeClaim") continue;
+    if (op.tx_hash && hardcodedClaimTxs.has(op.tx_hash)) continue;
+    const cur = (op.buy_currency || "").toUpperCase();
+    const amt = op.buy_amount || 0;
+    if (cur === "TUSD2" || cur === "TUSD") dbClaimedTusd += amt;
+    else if (cur === "WETH") dbClaimedWeth += amt;
+    if (op.date_utc) {
+      const ts = Date.parse(op.date_utc);
+      if (!Number.isNaN(ts) && ts > lastClaimTs) lastClaimTs = ts;
+    }
+  }
+  const totalClaimedTusd = legacyClaimedTusd + dbClaimedTusd;
+  const totalClaimedWeth = dbClaimedWeth;
+  const totalClaimedTusdUsd = totalClaimedTusd * tusdPriceUsd + totalClaimedWeth * wethPriceUsd;
+  // Last claim = the most recent of: engine cycle timestamp (contract) or the
+  // newest FeeClaim operation (covers claimLegacyAndBurn done via AMI/button).
+  const lastClaimDate: Date | null = (() => {
+    const engineTs = engineLastCycle ? engineLastCycle.getTime() : 0;
+    const best = Math.max(engineTs, lastClaimTs);
+    return best > 0 ? new Date(best) : null;
+  })();
 
   // ── Strategic token rows from API ──
   type StrategicRow = {
@@ -4113,7 +4143,7 @@ const Home: NextPage = () => {
           <StatCard
             title="Cycles"
             value={`${engineCycles} execution${engineCycles !== 1 ? "s" : ""}`}
-            subtitle={engineLastCycle ? `Last: ${engineLastCycle.toISOString().slice(0, 10)}` : "No cycles yet"}
+            subtitle={lastClaimDate ? `Last: ${lastClaimDate.toISOString().slice(0, 10)}` : "No cycles yet"}
           />
         </div>
       </div>
