@@ -1,4 +1,4 @@
-# ₸USD Treasury Manager
+# ₸USD Treasury Manager 
 
 ## Operated by AMI (Artificial Monetary Intelligence)
 
