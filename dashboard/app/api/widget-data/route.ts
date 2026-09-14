@@ -62,8 +62,9 @@ async function refreshCandles(sb: any, wethPriceUsd: number) {
   const { data: st } = await sb.from("scan_state").select("block_number, updated_at").eq("key", "price_last_block").single();
   const cursor = Number(st?.block_number || 0);
   if (!cursor) return; // backfill aún no ejecutado
-  // no escanear más de 1 vez cada 4 min (el edge-cache ya limita, esto es el cinturón)
-  if (st?.updated_at && Date.now() - new Date(st.updated_at).getTime() < 4 * 60 * 1000) return;
+  // Throttle: at most one scan per minute (the edge cache already limits
+  // normal traffic; this belt just prevents RPC hammering).
+  if (st?.updated_at && Date.now() - new Date(st.updated_at).getTime() < 60 * 1000) return;
 
   const latest = await rpc("eth_getBlockByNumber", ["latest", false]);
   const latestBn = parseInt(latest.number, 16);
@@ -104,7 +105,7 @@ async function refreshCandles(sb: any, wethPriceUsd: number) {
   console.log(`[Scanner] price backfill advanced ${from}→${to} (${logs.length} swaps)`);
 
   // última vela guardada (para open/carry-forward)
-  const { data: lastRows } = await sb.from("price_history").select("day, open, high, low, close").order("day", { ascending: false }).limit(1);
+  const { data: lastRows } = await sb.from("price_history").select("day, open, high, low, close, swaps").order("day", { ascending: false }).limit(1);
   const last = lastRows?.[0];
   if (!last) return;
 
@@ -140,6 +141,10 @@ async function refreshCandles(sb: any, wethPriceUsd: number) {
           high: Math.max(Number(existing.high), ...prices),
           low: Math.min(Number(existing.low), ...prices),
           close,
+          // BUGFIX: the merge branch never updated the swap counter, so days
+          // created flat first showed swaps=0 forever even though their
+          // prices kept updating.
+          swaps: Number((existing as { swaps?: number }).swaps || 0) + prices.length,
           source: "onchain",
         });
         prevClose = close;
@@ -161,7 +166,16 @@ async function refreshCandles(sb: any, wethPriceUsd: number) {
   }
 
   if (upserts.length) {
-    await sb.from("price_history").upsert(upserts, { onConflict: "day" });
+    // BUGFIX: supabase-js does NOT throw on error — an unchecked failing
+    // upsert (e.g. a missing column) silently dropped every candle while the
+    // cursor kept advancing. Surface the error and do NOT advance past
+    // unsaved candles.
+    const { error: upErr } = await sb.from("price_history").upsert(upserts, { onConflict: "day" });
+    if (upErr) {
+      console.error("[Scanner] price_history upsert FAILED:", upErr);
+      return;
+    }
+    console.log(`[Scanner] price_history upserted ${upserts.length} candle(s) up to ${todayScanned}`);
   }
   await sb.from("scan_state").update({ block_number: to, updated_at: new Date().toISOString() }).eq("key", "price_last_block");
 
