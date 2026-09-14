@@ -52,6 +52,69 @@ async function rpc(method: string, params: unknown[]) {
   if (j.error) throw new Error(j.error.message || "rpc error");
   return j.result;
 }
+const PUBLIC_RPC = "https://mainnet.base.org";
+const ETHERSCAN_KEY = process.env.ETHERSCAN_APIKEY || process.env.ETHERSCAN_API_KEY || process.env.BASESCAN_API_KEY || "";
+
+async function rpcAt(url: string, method: string, params: unknown[]) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+  const j = await res.json();
+  if (j.error) throw new Error(j.error.message || "rpc error");
+  return j.result;
+}
+
+type LogFilter = { address: string; topics: (string | string[] | null)[]; fromBlock: string; toBlock: string };
+
+async function etherscanGetLogs(f: LogFilter): Promise<{ blockNumber: string; data: string; topics: string[]; transactionHash: string; logIndex: string }[]> {
+  // Etherscan V2 covers Base (chainid 8453) on the free tier. It cannot OR
+  // multiple values in one topic position, so expand them into one call each.
+  const topic2 = f.topics[2];
+  const topic2Values: (string | null)[] = Array.isArray(topic2) ? topic2 : [typeof topic2 === "string" ? topic2 : null];
+  const out: { blockNumber: string; data: string; topics: string[]; transactionHash: string; logIndex: string }[] = [];
+  for (const t2 of topic2Values) {
+    const qs = new URLSearchParams({
+      chainid: "8453", module: "logs", action: "getLogs",
+      address: f.address,
+      fromBlock: String(parseInt(f.fromBlock, 16)),
+      toBlock: String(parseInt(f.toBlock, 16)),
+      topic0: String(f.topics[0]),
+      apikey: ETHERSCAN_KEY,
+    });
+    if (t2) { qs.set("topic2", t2); qs.set("topic0_2_opr", "and"); }
+    const res = await fetch(`https://api.etherscan.io/v2/api?${qs}`);
+    const j = await res.json();
+    if (j.status === "0" && j.message !== "No records found") throw new Error(`etherscan: ${j.result || j.message}`);
+    for (const l of j.result || []) {
+      out.push({ blockNumber: l.blockNumber, data: l.data, topics: l.topics, transactionHash: l.transactionHash, logIndex: l.logIndex });
+    }
+  }
+  return out;
+}
+
+/* getLogs with a fallback chain: primary RPC (Ankr) → public Base RPC →
+   Etherscan API (free tier), so one dead/rate-limited provider never
+   freezes the scanners again. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getLogsFallback(filter: LogFilter): Promise<any[]> {
+  try {
+    return await rpcAt(RPC_URL, "eth_getLogs", [filter]);
+  } catch (e1) {
+    console.warn("[Scanner] primary RPC getLogs failed, trying public RPC:", (e1 as Error).message);
+  }
+  try {
+    return await rpcAt(PUBLIC_RPC, "eth_getLogs", [filter]);
+  } catch (e2) {
+    console.warn("[Scanner] public RPC getLogs failed:", (e2 as Error).message);
+  }
+  if (ETHERSCAN_KEY) {
+    return await etherscanGetLogs(filter);
+  }
+  throw new Error("all getLogs providers failed");
+}
+
 const dayOfTs = (ts: number) => new Date(ts * 1000).toISOString().slice(0, 10);
 const nextDay = (d: string) => new Date(Date.parse(d) + 864e5).toISOString().slice(0, 10);
 
@@ -66,7 +129,12 @@ async function refreshCandles(sb: any, wethPriceUsd: number) {
   // normal traffic; this belt just prevents RPC hammering).
   if (st?.updated_at && Date.now() - new Date(st.updated_at).getTime() < 60 * 1000) return;
 
-  const latest = await rpc("eth_getBlockByNumber", ["latest", false]);
+  let latest;
+  try {
+    latest = await rpc("eth_getBlockByNumber", ["latest", false]);
+  } catch {
+    latest = await rpcAt(PUBLIC_RPC, "eth_getBlockByNumber", ["latest", false]);
+  }
   const latestBn = parseInt(latest.number, 16);
   const latestTs = parseInt(latest.timestamp, 16);
   if (latestBn <= cursor) return;
@@ -88,9 +156,9 @@ async function refreshCandles(sb: any, wethPriceUsd: number) {
     if (cFrom > latestBn) break;
     const cTo = Math.min(latestBn, cFrom + CHUNK - 1);
     try {
-      const chunkLogs = await rpc("eth_getLogs", [
+      const chunkLogs = await getLogsFallback(
         { address: POOL, topics: [SWAP_TOPIC], fromBlock: "0x" + cFrom.toString(16), toBlock: "0x" + cTo.toString(16) },
-      ]);
+      );
       logs = logs.concat(chunkLogs || []);
       to = cTo;
     } catch (e) {
@@ -196,12 +264,12 @@ async function refreshCandles(sb: any, wethPriceUsd: number) {
         if (cFrom > latestBn) break;
         const cTo = Math.min(latestBn, cFrom + S_CHUNK - 1);
         try {
-          const chunk = await rpc("eth_getLogs", [{
+          const chunk = await getLogsFallback({
             address: TUSD_TOKEN,
             topics: [TRANSFER_TOPIC, null, [pad32(STAKING_CONTRACT), pad32(LIQUID_STAKING)]],
             fromBlock: "0x" + cFrom.toString(16),
             toBlock: "0x" + cTo.toString(16),
-          }]);
+          });
           sLogs = sLogs.concat(chunk || []);
           sTo = cTo;
         } catch (e) {
