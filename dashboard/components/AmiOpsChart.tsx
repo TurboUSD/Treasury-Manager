@@ -162,8 +162,7 @@ function processOps(rows: AmiOpRow[]): {
     const t = op.op_type;
     if (!OP_STYLE[t]) continue;
     if (op.type === "Other Fee" && op.sell_currency === "ETH") continue;
-    const key =
-      (op.tx_hash || op.date_utc || "") + "|" + t + (t === "FeeClaim" ? "|" + (op.buy_currency || "") : "");
+    const key = (op.tx_hash || op.date_utc || "") + "|" + t;
     if (!groups[key]) {
       groups[key] = [];
       order.push(key);
@@ -249,10 +248,22 @@ function processOps(rows: AmiOpRow[]): {
       }
       continue; // stakes: solo stats, sin marcador en el gráfico
     } else if (t === "FeeClaim") {
-      const cur = op.buy_currency || "";
-      const amt = op.buy_amount || 0;
-      usd = amt * (op.token_price_usd || (cur === "WETH" ? op.weth_price_usd || 0 : 0));
-      main = `+${fmtAmt(amt)} ${cur === "TUSD2" ? "₸USD" : cur} fees claimed`;
+      // One claim tx brings ₸USD and WETH at once — merge the rows into a
+      // single marker and show both amounts in the tooltip.
+      let tusdAmt = 0;
+      let wethAmt = 0;
+      for (const r of rws) {
+        const c = (r.buy_currency || "").toUpperCase();
+        const a = r.buy_amount || 0;
+        const pr = r.token_price_usd || (c === "WETH" ? r.weth_price_usd || 0 : 0);
+        if (c === "WETH") wethAmt += a;
+        else tusdAmt += a;
+        usd += a * pr;
+      }
+      const parts: string[] = [];
+      if (tusdAmt > 0) parts.push(`+${fmtAmt(tusdAmt)} ₸USD`);
+      if (wethAmt > 0) parts.push(`+${wethAmt.toFixed(4)} WETH`);
+      main = `${parts.join(" · ") || "Fees"} claimed`;
       sub = fmtUsd(usd);
     } else if (t === "Rebalance") {
       let usdc = 0,
