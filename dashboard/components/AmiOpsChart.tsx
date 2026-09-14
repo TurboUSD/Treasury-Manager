@@ -325,7 +325,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
   const [range, setRange] = useState("90D");
   const [rangeOpen, setRangeOpen] = useState(false);
   const [metric, setMetric] = useState<"price" | "mcap">("price");
-  const [opAuthor, setOpAuthor] = useState<"all" | "ami">("all"); // por defecto se ven todas las operaciones
+  const [opAuthor, setOpAuthor] = useState<"all" | "ami">("ami"); // el treasury muestra AMI por defecto
   const [ctype, setCtype] = useState<"line" | "candles">("line");
   const [supplyNow, setSupplyNow] = useState<number | null>(null);
   const [burnedNow, setBurnedNow] = useState<number>(0);
@@ -370,7 +370,6 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
   /* own daily candles + supply */
   useEffect(() => {
     let cancelled = false;
-    const loadWidgetData = () =>
     fetch("/api/widget-data", { headers: { accept: "application/json" } })
       .then(res => (res.ok ? res.json() : null))
       .then(j => {
@@ -398,11 +397,8 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
         if (j.cache?.updated_at) setCacheAge(Math.max(0, Math.round((Date.now() - Date.parse(j.cache.updated_at)) / 60000)));
       })
       .catch(() => undefined);
-    loadWidgetData();
-    const interval = setInterval(loadWidgetData, 5 * 60 * 1000); // igual que treasury-data en page.tsx
     return () => {
       cancelled = true;
-      clearInterval(interval);
     };
   }, []);
 
@@ -499,8 +495,16 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
 
   const geom = useMemo(() => {
     if (!viewAll.length) return null;
-    const f0 = viewAll[0].t,
-      f1 = viewAll[viewAll.length - 1].t;
+    const f0 = viewAll[0].t;
+    // BUGFIX: candles are stamped at bucket START and a quiet pool can go
+    // days without a new candle, so operations newer than the last candle
+    // (e.g. a fee claim later the same day) fell outside the domain and
+    // were filtered out. Extend the domain to the newest marker; interp()
+    // clamps their y to the last known price.
+    let f1 = viewAll[viewAll.length - 1].t;
+    for (const m of markers) {
+      if (m.t > f1) f1 = m.t;
+    }
     const t0 = view ? view.x0 : f0;
     const t1 = view ? view.x1 : f1;
 
@@ -888,14 +892,7 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
           </div>
         );
         return (
-          <div
-            className="grid grid-cols-2 md:grid-cols-4 rounded-lg overflow-hidden mb-3"
-            style={{
-              border: "1px solid #262626",
-              fontFamily:
-                'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-            }}
-          >
+          <div className="grid grid-cols-2 md:grid-cols-4 rounded-lg overflow-hidden mb-3" style={{ border: "1px solid #262626" }}>
             {tile("₸USD burned", fmtAmt(burnedShown) + (px > 0 ? ` · ${fmtUsd(burnedShown * px)}` : ""), `${burnCount} burn${burnCount === 1 ? "" : "s"}`, "b", 0)}
             {tile("₸USD bought", fmtAmt(stats.bought) + (px > 0 ? ` · ${fmtUsd(stats.bought * px)}` : ""), `${stats.buys} buy${stats.buys === 1 ? "" : "s"}`, "c", 1)}
             {tile("₸USD staked", fmtAmt(stakedShown) + (px > 0 ? ` · ${fmtUsd(stakedShown * px)}` : ""), pct, "s", 2)}
