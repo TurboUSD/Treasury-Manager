@@ -573,7 +573,11 @@ export function AmiOpsChart({ operations }: { operations: AmiOpRow[] }) {
         for (let qi = 0; qi < pi; qi++) {
           const q = placed[qi];
           if (Math.hypot(p.x - q.x, p.y - q.y) < p.r + q.r + 2) {
-            p.y = q.y - (q.r + p.r + 5); // justo encima del que choca
+            // Alternate above/below so same-minute clusters spread around
+            // the line instead of towering to the top of the chart.
+            const step = q.r + p.r + 5;
+            const below = q.y + step;
+            p.y = pi % 2 === 0 && below <= H - PAD.b - p.r - 2 ? below : q.y - step;
             collided = true;
           }
         }

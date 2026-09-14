@@ -70,17 +70,33 @@ async function refreshCandles(sb: any, wethPriceUsd: number) {
   const latestTs = parseInt(latest.timestamp, 16);
   if (latestBn <= cursor) return;
   const from = cursor + 1;
-  const to = Math.min(latestBn, from + 1_000_000); // backlog acotado; el resto en la siguiente llamada
   const tsOf = (bn: number) => latestTs - (latestBn - bn) * BLOCK_TIME;
 
+  // BUGFIX: public RPCs reject large eth_getLogs ranges. A single 1M-block
+  // request meant that once the backlog grew past the RPC limit, EVERY call
+  // failed, the error was swallowed and the cursor never advanced — the
+  // price history froze (last stuck on 2026-09-04). Scan in small chunks and
+  // advance the cursor to the last chunk that succeeded, so each invocation
+  // makes progress and the backlog drains over a few calls.
+  const CHUNK = 9_000;
+  const MAX_CHUNKS = 12; // ≤ ~108k blocks of work per invocation
   let logs: { blockNumber: string; data: string }[] = [];
-  try {
-    logs = await rpc("eth_getLogs", [
-      { address: POOL, topics: [SWAP_TOPIC], fromBlock: "0x" + from.toString(16), toBlock: "0x" + to.toString(16) },
-    ]);
-  } catch {
-    return; // rango demasiado denso: se reintenta en la siguiente invocación
+  let to = from - 1;
+  for (let c = 0; c < MAX_CHUNKS; c++) {
+    const cFrom = to + 1;
+    if (cFrom > latestBn) break;
+    const cTo = Math.min(latestBn, cFrom + CHUNK - 1);
+    try {
+      const chunkLogs = await rpc("eth_getLogs", [
+        { address: POOL, topics: [SWAP_TOPIC], fromBlock: "0x" + cFrom.toString(16), toBlock: "0x" + cTo.toString(16) },
+      ]);
+      logs = logs.concat(chunkLogs || []);
+      to = cTo;
+    } catch {
+      break; // keep what we have; the cursor advances to the last good chunk
+    }
   }
+  if (to < from) return; // nothing scanned this round — retry next invocation
 
   // última vela guardada (para open/carry-forward)
   const { data: lastRows } = await sb.from("price_history").select("day, open, high, low, close").order("day", { ascending: false }).limit(1);
