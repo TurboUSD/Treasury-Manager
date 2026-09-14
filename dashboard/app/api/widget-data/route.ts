@@ -118,6 +118,93 @@ async function getLogsFallback(filter: LogFilter): Promise<any[]> {
 const dayOfTs = (ts: number) => new Date(ts * 1000).toISOString().slice(0, 10);
 const nextDay = (d: string) => new Date(Date.parse(d) + 864e5).toISOString().slice(0, 10);
 
+/* ── Candle reconciliation against external sources ──────────────────
+   GeckoTerminal serves complete DAILY OHLCV for the pool and DexScreener
+   serves the live price + 24h volume. After each scan cycle (throttled to
+   once per 30 min) we cross-check our recent candles against them:
+   - a missing day is filled entirely from GeckoTerminal;
+   - a day whose close deviates >5% from GeckoTerminal is corrected
+     (our scan missed swaps: RPC gap, provider outage, etc.);
+   - missing volume is completed from GeckoTerminal;
+   - the current (still-forming) day falls back to DexScreener's live price
+     when GeckoTerminal has no candle for it yet.
+   This guarantees the chart never freezes even if every RPC fails, and that
+   every day's swaps end up reflected via one source or another. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function reconcileCandles(sb: any) {
+  try {
+    const { data: rst } = await sb.from("scan_state").select("updated_at").eq("key", "candle_reconcile").single();
+    if (rst?.updated_at && Date.now() - new Date(rst.updated_at).getTime() < 30 * 60 * 1000) return;
+    await sb.from("scan_state").upsert(
+      { key: "candle_reconcile", block_number: 0, updated_at: new Date().toISOString() },
+      { onConflict: "key" },
+    );
+
+    // GeckoTerminal: last 12 daily candles for the pool (free, no key)
+    const gtRes = await fetch(
+      `https://api.geckoterminal.com/api/v2/networks/base/pools/${POOL}/ohlcv/day?aggregate=1&limit=12&currency=usd&token=${TUSD_TOKEN}`,
+      { headers: { accept: "application/json" } },
+    );
+    const gtJson = await gtRes.json();
+    const gtList: number[][] = gtJson?.data?.attributes?.ohlcv_list || [];
+    const gt = new Map<string, { o: number; h: number; l: number; c: number; v: number }>();
+    for (const cdl of gtList) {
+      const day = new Date(cdl[0] * 1000).toISOString().slice(0, 10);
+      gt.set(day, { o: cdl[1], h: cdl[2], l: cdl[3], c: cdl[4], v: cdl[5] || 0 });
+    }
+    if (!gt.size) return;
+
+    const { data: ourRows } = await sb
+      .from("price_history")
+      .select("day, open, high, low, close, volume_usd")
+      .order("day", { ascending: false })
+      .limit(14);
+    const ours = new Map<string, { open: number; high: number; low: number; close: number; volume_usd: number | null }>();
+    for (const r of ourRows || []) ours.set(String(r.day), r);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const upserts: Record<string, unknown>[] = [];
+    for (const [day, g] of gt) {
+      if (day >= today) continue; // still forming — handled below
+      const mine = ours.get(day);
+      if (!mine) {
+        upserts.push({ day, open: g.o, high: g.h, low: g.l, close: g.c, volume_usd: g.v, source: "geckoterminal" });
+        continue;
+      }
+      const updates: Record<string, unknown> = {};
+      if (g.c > 0 && Math.abs(Number(mine.close) - g.c) / g.c > 0.05) {
+        updates.open = g.o; updates.high = g.h; updates.low = g.l; updates.close = g.c;
+        updates.source = "geckoterminal";
+      }
+      if ((!mine.volume_usd || Number(mine.volume_usd) === 0) && g.v > 0) updates.volume_usd = g.v;
+      if (Object.keys(updates).length) upserts.push({ day, ...updates });
+    }
+
+    // Current day: DexScreener live price as a last resort when we have no
+    // row for today and GeckoTerminal hasn't published today's candle.
+    if (!ours.has(today) && !gt.has(today)) {
+      try {
+        const dsRes = await fetch(`https://api.dexscreener.com/latest/dex/pairs/base/${POOL}`);
+        const ds = await dsRes.json();
+        const pair = ds?.pairs?.[0] || ds?.pair;
+        const px = Number(pair?.priceUsd || 0);
+        const vol = Number(pair?.volume?.h24 || 0);
+        if (px > 0) {
+          upserts.push({ day: today, open: px, high: px, low: px, close: px, volume_usd: vol, source: "dexscreener" });
+        }
+      } catch { /* best-effort */ }
+    }
+
+    if (upserts.length) {
+      const { error: recErr } = await sb.from("price_history").upsert(upserts, { onConflict: "day" });
+      if (recErr) console.error("[Scanner] candle reconcile upsert FAILED:", recErr);
+      else console.log(`[Scanner] candle reconcile fixed/filled ${upserts.length} day(s)`);
+    }
+  } catch (e) {
+    console.error("[Scanner] candle reconcile failed:", e);
+  }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function refreshCandles(sb: any, wethPriceUsd: number) {
   if (!RPC_URL || !wethPriceUsd) return;
@@ -419,6 +506,9 @@ export async function GET() {
     } catch (e) {
       console.error("refreshCandles:", e);
     }
+    // Cross-check recent candles against GeckoTerminal/DexScreener so no
+    // day's swaps are ever missing regardless of RPC health.
+    await reconcileCandles(sb);
 
     // histórico completo de velas diarias (propio, on-chain)
     const { data: candles } = await sb
