@@ -78,8 +78,8 @@ async function refreshCandles(sb: any, wethPriceUsd: number) {
   // price history froze (last stuck on 2026-09-04). Scan in small chunks and
   // advance the cursor to the last chunk that succeeded, so each invocation
   // makes progress and the backlog drains over a few calls.
-  const CHUNK = 9_000;
-  const MAX_CHUNKS = 12; // ≤ ~108k blocks of work per invocation
+  const CHUNK = 2_000;
+  const MAX_CHUNKS = 40; // ≤ ~80k blocks of work per invocation
   let logs: { blockNumber: string; data: string }[] = [];
   let to = from - 1;
   for (let c = 0; c < MAX_CHUNKS; c++) {
@@ -92,11 +92,16 @@ async function refreshCandles(sb: any, wethPriceUsd: number) {
       ]);
       logs = logs.concat(chunkLogs || []);
       to = cTo;
-    } catch {
+    } catch (e) {
+      console.error(`[Scanner] price chunk ${cFrom}-${cTo} FAILED:`, e);
       break; // keep what we have; the cursor advances to the last good chunk
     }
   }
-  if (to < from) return; // nothing scanned this round — retry next invocation
+  if (to < from) {
+    console.error(`[Scanner] price backfill made NO progress from block ${from} — check RPC_URL / getLogs limits`);
+    return; // nothing scanned this round — retry next invocation
+  }
+  console.log(`[Scanner] price backfill advanced ${from}→${to} (${logs.length} swaps)`);
 
   // última vela guardada (para open/carry-forward)
   const { data: lastRows } = await sb.from("price_history").select("day, open, high, low, close").order("day", { ascending: false }).limit(1);
