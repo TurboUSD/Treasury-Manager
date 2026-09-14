@@ -184,14 +184,32 @@ async function refreshCandles(sb: any, wethPriceUsd: number) {
     const { data: sst } = await sb.from("scan_state").select("block_number").eq("key", "stake_last_block").single();
     const sCursor = Number(sst?.block_number || 0);
     if (sCursor > 0 && latestBn > sCursor) {
-      const sTo = Math.min(latestBn, sCursor + 1_000_000);
-      const sLogs: { transactionHash: string; logIndex: string; blockNumber: string; data: string; topics: string[] }[] =
-        await rpc("eth_getLogs", [{
-          address: TUSD_TOKEN,
-          topics: [TRANSFER_TOPIC, null, [pad32(STAKING_CONTRACT), pad32(LIQUID_STAKING)]],
-          fromBlock: "0x" + (sCursor + 1).toString(16),
-          toBlock: "0x" + sTo.toString(16),
-        }]);
+      // BUGFIX: same disease as the price scanner — a single huge getLogs
+      // fails with "Block range is too large" once the backlog grows, and
+      // the cursor never advances. Scan in small chunks instead.
+      const S_CHUNK = 2_000;
+      const S_MAX_CHUNKS = 40;
+      let sLogs: { transactionHash: string; logIndex: string; blockNumber: string; data: string; topics: string[] }[] = [];
+      let sTo = sCursor;
+      for (let c = 0; c < S_MAX_CHUNKS; c++) {
+        const cFrom = sTo + 1;
+        if (cFrom > latestBn) break;
+        const cTo = Math.min(latestBn, cFrom + S_CHUNK - 1);
+        try {
+          const chunk = await rpc("eth_getLogs", [{
+            address: TUSD_TOKEN,
+            topics: [TRANSFER_TOPIC, null, [pad32(STAKING_CONTRACT), pad32(LIQUID_STAKING)]],
+            fromBlock: "0x" + cFrom.toString(16),
+            toBlock: "0x" + cTo.toString(16),
+          }]);
+          sLogs = sLogs.concat(chunk || []);
+          sTo = cTo;
+        } catch (e) {
+          console.error(`[Scanner] stake chunk ${cFrom}-${cTo} FAILED:`, e);
+          break;
+        }
+      }
+      if (sTo <= sCursor) return;
       const rows = sLogs
         .map(l => {
           const amount = Number(BigInt(l.data)) / 1e18;
