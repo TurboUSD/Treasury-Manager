@@ -779,7 +779,7 @@ function CopyIconButton({ address }: { address: string }) {
   );
 }
 
-function StatCard({ title, value, subtitle, emoji, emojiDisc, tooltip }: { title: React.ReactNode; value: string; subtitle?: React.ReactNode; emoji?: string; emojiDisc?: boolean; tooltip?: React.ReactNode }) {
+function StatCard({ title, value, subtitle, emoji, tooltip }: { title: React.ReactNode; value: string; subtitle?: React.ReactNode; emoji?: string; tooltip?: React.ReactNode }) {
   const [tipOpen, setTipOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const isTouch = useRef(false);
@@ -803,18 +803,9 @@ function StatCard({ title, value, subtitle, emoji, emojiDisc, tooltip }: { title
       onMouseEnter={() => { if (tooltip && !isTouch.current) setTipOpen(true); }}
       onMouseLeave={() => { if (tooltip && !isTouch.current) setTipOpen(false); isTouch.current = false; }}
     >
-      {emoji && !emojiDisc && (
+      {emoji && (
         <span className="absolute bottom-2 right-2 sm:bottom-auto sm:top-1/2 sm:right-4 sm:-translate-y-1/2 text-2xl sm:text-4xl opacity-80 select-none">
           {emoji}
-        </span>
-      )}
-      {/* a dark emoji (the 🛒) sits on a pale-blue disc, as on turbousd.com, so it reads on the black card */}
-      {emoji && emojiDisc && (
-        <span
-          className="absolute bottom-1.5 right-1.5 sm:bottom-auto sm:top-4 sm:right-4 flex items-center justify-center rounded-full select-none w-7 h-7 sm:w-12 sm:h-12 text-base sm:text-2xl"
-          style={{ background: "#e6f7ff", border: "2px solid #9ce0ff", boxShadow: "0 0 14px rgba(156,224,255,0.45)" }}
-        >
-          <span style={{ transform: "translateY(1px)" }}>{emoji}</span>
         </span>
       )}
       <h3
@@ -2851,7 +2842,6 @@ const Home: NextPage = () => {
               </>
             }
             emoji="🛒"
-            emojiDisc
             tooltip={
               <div style={{ lineHeight: 1.7 }}>
                 <div><span style={{ color: "#fff", fontWeight: 600 }}>WETH Buyback:</span> {fmtBigRound(buybackWethTusd)} ₸USD</div>

@@ -17,7 +17,7 @@ type Domain = { t0: number; t1: number };
 type YDomain = { lo: number; hi: number };
 
 const KINDS: Record<Kind, { label: string; color: string }> = {
-  Buyback: { label: "Buyback", color: "#43e397" },
+  Buyback: { label: "Buyback", color: "#9ce0ff" },
   StrategicBuy: { label: "Strategic buy", color: "#d63384" },
   Burn: { label: "Burn", color: "#ff5a5a" },
   FeeClaim: { label: "Fee claim", color: "#f5d76e" },
