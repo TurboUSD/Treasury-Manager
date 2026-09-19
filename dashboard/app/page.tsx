@@ -2841,7 +2841,7 @@ const Home: NextPage = () => {
                 <p className="text-base sm:text-xl font-bold mt-1 text-white">{fmtUsdShort(strategicInvestedUsd)}</p>
               </>
             }
-            emoji="🛒"
+            emoji="💸"
             tooltip={
               <div style={{ lineHeight: 1.7 }}>
                 <div><span style={{ color: "#fff", fontWeight: 600 }}>WETH Buyback:</span> {fmtBigRound(buybackWethTusd)} ₸USD</div>
