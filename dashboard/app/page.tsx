@@ -8,7 +8,7 @@ import { Area, AreaChart, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, 
 import { parseEther, parseUnits } from "viem";
 import { base } from "viem/chains";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
-import { AmiOpsChart, type AmiOpRow } from "~~/components/AmiOpsChart";
+import OpsChart from "~~/components/ops-chart/OpsChart";
 
 // ── Contract Addresses ─────────────────────────────────────────────────────
 const TREASURY_V1 = "0x3dbF93D110C677A1c063A600cb42940262f3BBd6" as const;
@@ -779,7 +779,7 @@ function CopyIconButton({ address }: { address: string }) {
   );
 }
 
-function StatCard({ title, value, subtitle, emoji, tooltip }: { title: React.ReactNode; value: string; subtitle?: React.ReactNode; emoji?: string; tooltip?: React.ReactNode }) {
+function StatCard({ title, value, subtitle, emoji, emojiDisc, tooltip }: { title: React.ReactNode; value: string; subtitle?: React.ReactNode; emoji?: string; emojiDisc?: boolean; tooltip?: React.ReactNode }) {
   const [tipOpen, setTipOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const isTouch = useRef(false);
@@ -803,9 +803,18 @@ function StatCard({ title, value, subtitle, emoji, tooltip }: { title: React.Rea
       onMouseEnter={() => { if (tooltip && !isTouch.current) setTipOpen(true); }}
       onMouseLeave={() => { if (tooltip && !isTouch.current) setTipOpen(false); isTouch.current = false; }}
     >
-      {emoji && (
+      {emoji && !emojiDisc && (
         <span className="absolute bottom-2 right-2 sm:bottom-auto sm:top-1/2 sm:right-4 sm:-translate-y-1/2 text-2xl sm:text-4xl opacity-80 select-none">
           {emoji}
+        </span>
+      )}
+      {/* a dark emoji (the 🛒) sits on a pale-blue disc, as on turbousd.com, so it reads on the black card */}
+      {emoji && emojiDisc && (
+        <span
+          className="absolute bottom-1.5 right-1.5 sm:bottom-auto sm:top-4 sm:right-4 flex items-center justify-center rounded-full select-none w-7 h-7 sm:w-12 sm:h-12 text-base sm:text-2xl"
+          style={{ background: "#e6f7ff", border: "2px solid #9ce0ff", boxShadow: "0 0 14px rgba(156,224,255,0.45)" }}
+        >
+          <span style={{ transform: "translateY(1px)" }}>{emoji}</span>
         </span>
       )}
       <h3
@@ -2548,7 +2557,7 @@ const Home: NextPage = () => {
         { key: "tusd", label: "₸USD", color: "#43e397" },
         { key: "weth", label: "WETH", color: "#8b5cf6" },
         { key: "usdc", label: "USDC", color: "#3b82f6" },
-        { key: "strategic", label: "Strategic", color: "#c2660a" },
+        { key: "strategic", label: "Strategic", color: "#d63384" },
       ];
     }
     return STRATEGIC_PRESETS.filter(p => strategicRows.some(r => r.preset.ticker === p.ticker && r.balance > 0)).map(
@@ -2780,8 +2789,8 @@ const Home: NextPage = () => {
     BurnEngine: "#ff6b6b",
     Rebalance: "#5b8dee",
     Stake: "#ffcf72",
-    StrategicBuy: "rgb(232, 144, 55)",
-    StrategicSell: "#fb923c",
+    StrategicBuy: "#e0529a",
+    StrategicSell: "#f06fae",
     FeeClaim: "#4ade80",
   };
 
@@ -2842,6 +2851,7 @@ const Home: NextPage = () => {
               </>
             }
             emoji="🛒"
+            emojiDisc
             tooltip={
               <div style={{ lineHeight: 1.7 }}>
                 <div><span style={{ color: "#fff", fontWeight: 600 }}>WETH Buyback:</span> {fmtBigRound(buybackWethTusd)} ₸USD</div>
@@ -2897,7 +2907,7 @@ const Home: NextPage = () => {
       </div>
 
       {/* Treasury Balances */}
-      <div className="max-w-4xl w-full px-4 mb-8">
+      <div id="balances" className="max-w-4xl w-full px-4 mb-8">
         <SectionTitle>Treasury Balances</SectionTitle>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <StatCard
@@ -3340,7 +3350,7 @@ const Home: NextPage = () => {
       })()}
 
       {/* Operations Table */}
-      <div ref={opsSectionRef} className="max-w-4xl w-full px-4 mb-8">
+      <div id="activity" ref={opsSectionRef} className="max-w-4xl w-full px-4 mb-8">
         <div className="flex items-center justify-between" style={{ marginBottom: "-0.5rem" }}>
           <SectionTitle>Onchain Activity</SectionTitle>
           <div className="flex items-center gap-2" style={{ marginTop: "-1rem" }}>
@@ -3565,7 +3575,7 @@ const Home: NextPage = () => {
                         <span
                           className="badge badge-xs sm:badge-sm font-mono"
                           style={{
-                            background: op.type === "StrategicBuy" ? "rgb(223 119 15 / 36%)" : `${badgeColor[op.type] ?? "#888"}40`,
+                            background: op.type === "StrategicBuy" ? "rgb(214 51 132 / 36%)" : `${badgeColor[op.type] ?? "#888"}40`,
                             color: badgeColor[op.type] ?? "#888",
                             border: "none",
                             fontSize: "inherit",
@@ -3692,9 +3702,9 @@ const Home: NextPage = () => {
       </div>
 
       {/* AMI Operations Chart — price line with every AMI op plotted on it */}
-      <div className="max-w-4xl w-full px-4 mb-8">
+      <div id="charts" className="max-w-4xl w-full px-4 mb-8">
         <SectionTitle>Activity on the Chart</SectionTitle>
-        <AmiOpsChart operations={(apiData?.operations ?? []) as AmiOpRow[]} />
+        <OpsChart />
       </div>
 
       {/* Treasury Composition Chart — stacked area by asset category */}
@@ -4114,7 +4124,7 @@ const Home: NextPage = () => {
       </div>
 
       {/* BurnEngine */}
-      <div className="max-w-4xl w-full px-4 mb-8">
+      <div id="burn-engine" className="max-w-4xl w-full px-4 mb-8">
         <SectionTitle>Burn Engine</SectionTitle>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {/* Card 1: Total Burned */}
@@ -4165,7 +4175,7 @@ const Home: NextPage = () => {
       )}
 
       {/* Contracts */}
-      <div className="max-w-4xl w-full px-4 mb-8">
+      <div id="contracts" className="max-w-4xl w-full px-4 mb-8">
         <SectionTitle>Contracts and Wallets</SectionTitle>
         <div className="rounded-xl p-6 space-y-3" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
           {(
@@ -4214,37 +4224,6 @@ const Home: NextPage = () => {
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="text-center text-sm space-y-2" style={{ color: TEXT_DIM }}>
-        <p>
-          <a
-            href="https://github.com/TurboUSD/Treasury-Manager"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:underline"
-            style={{ color: TEXT_DIM }}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-              <svg height="16" width="16" viewBox="0 0 16 16" fill="white" xmlns="http://www.w3.org/2000/svg">
-                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
-              </svg>
-              Open source on GitHub
-            </span>
-          </a>
-        </p>
-        <p>
-          <a
-            href="https://turbousd.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:underline"
-            style={{ color: GOLD }}
-          >
-            turbousd.com
-          </a>
-          {" · ₸USD Treasury · Powered by AMI"}
-        </p>
-      </div>
     </div>
   );
 };

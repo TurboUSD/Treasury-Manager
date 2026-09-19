@@ -32,29 +32,8 @@ export const RainbowKitCustomConnectButton = () => {
             {(() => {
               if (!connected) {
                 return (
-                  <button
-                    onClick={openConnectModal}
-                    type="button"
-                    className="btn btn-sm connect-wallet-btn"
-                    style={{
-                      background: "#000",
-                      color: "#43e397",
-                      border: "2px solid #43e397",
-                      borderRadius: "12px",
-                      fontWeight: 500,
-                      transition: "all 0.25s ease",
-                    }}
-                    onMouseEnter={e => {
-                      (e.currentTarget as HTMLButtonElement).style.background = "#43e397";
-                      (e.currentTarget as HTMLButtonElement).style.color = "#000";
-                    }}
-                    onMouseLeave={e => {
-                      (e.currentTarget as HTMLButtonElement).style.background = "#000";
-                      (e.currentTarget as HTMLButtonElement).style.color = "#43e397";
-                    }}
-                  >
-                    <span className="hidden sm:inline">Connect Wallet</span>
-                    <span className="sm:hidden">Connect</span>
+                  <button onClick={openConnectModal} type="button" className="tc-btn tc-btn--ghost tc-btn--sm">
+                    Connect
                   </button>
                 );
               }
@@ -65,7 +44,7 @@ export const RainbowKitCustomConnectButton = () => {
 
               return (
                 <>
-                  <div className="flex flex-col items-center mr-2">
+                  <div className="hidden sm:flex flex-col items-center mr-2">
                     <Balance
                       address={account.address as Address}
                       style={{
