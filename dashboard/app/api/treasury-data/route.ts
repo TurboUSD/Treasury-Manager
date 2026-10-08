@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { createPublicClient, formatEther, formatUnits, http, parseAbiItem } from "viem";
+import { createPublicClient, formatEther, formatUnits, parseAbiItem } from "viem";
 import { base } from "viem/chains";
+import { baseTransport } from "~~/utils/rpc";
 import { getSupabaseAdmin } from "~~/utils/supabase";
 
 // Allow up to 60s (Vercel) — the chart delta scan may need a few extra seconds
@@ -167,14 +168,13 @@ function calcV3TokenPriceUsd(sqrtPriceX96: bigint, wethPriceUsd: number): number
 }
 
 // ── Viem client ────────────────────────────────────────────────────────────
-const rpcUrl =
-  process.env.BASE_RPC_URL ||
-  process.env.ANKR_RPC_URL ||
-  `https://base-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY || "8GVG8WjDs-sGFRr6Rm839"}`;
-
+// Every configured endpoint, tried in order per request, with dead ones
+// benched (utils/rpc.ts). This used to be `BASE_RPC_URL || ANKR_RPC_URL ||
+// alchemy`, and `||` only checks that a variable is SET: a disabled Ankr key
+// took the whole dashboard down with a working Alchemy key on the same line.
 const client = createPublicClient({
   chain: base,
-  transport: http(rpcUrl),
+  transport: baseTransport(),
 });
 
 // ── Cache TTL (5 minutes) ──────────────────────────────────────────────────

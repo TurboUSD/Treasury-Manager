@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { baseRpc } from "~~/utils/rpc";
 import { getSupabaseAdmin } from "~~/utils/supabase";
 
 /**
@@ -27,7 +28,7 @@ const Q192 = 2n ** 192n;
 const SCALE = 10n ** 18n;
 const BLOCK_TIME = 2;
 
-const RPC_URL = process.env.ANKR_RPC_URL || process.env.NEXT_PUBLIC_RPC_FALLBACK_URL || "";
+// Every RPC endpoint (env + Alchemy + public Base nodes), tried in order: utils/rpc.ts
 
 /* staking: escaneo incremental de depósitos de ₸USD */
 const TUSD_TOKEN = "0x3d5e487B21E0569048c4D1A60E98C36e1B09DB07";
@@ -42,34 +43,17 @@ const TREASURIES = new Set([
 ]);
 const pad32 = (a: string) => "0x" + a.toLowerCase().replace("0x", "").padStart(64, "0");
 
-async function rpc(method: string, params: unknown[]) {
-  const res = await fetch(RPC_URL, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
-  const j = await res.json();
-  if (j.error) throw new Error(j.error.message || "rpc error");
-  return j.result;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function rpc(method: string, params: unknown[]): Promise<any> {
+  return baseRpc(method, params);
 }
-const PUBLIC_RPC = "https://mainnet.base.org";
 const ETHERSCAN_KEY = process.env.ETHERSCAN_APIKEY || process.env.ETHERSCAN_API_KEY || process.env.BASESCAN_API_KEY || "";
-
-async function rpcAt(url: string, method: string, params: unknown[]) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
-  const j = await res.json();
-  if (j.error) throw new Error(j.error.message || "rpc error");
-  return j.result;
-}
 
 type LogFilter = { address: string; topics: (string | string[] | null)[]; fromBlock: string; toBlock: string };
 
 async function etherscanGetLogs(f: LogFilter): Promise<{ blockNumber: string; data: string; topics: string[]; transactionHash: string; logIndex: string }[]> {
-  // Etherscan V2 covers Base (chainid 8453) on the free tier. It cannot OR
+  // Etherscan V2 needs a PAID plan for Base: the free tier answers "Free API
+  // access is not supported for this chain" (checked 2026-10). It cannot OR
   // multiple values in one topic position, so expand them into one call each.
   const topic2 = f.topics[2];
   const topic2Values: (string | null)[] = Array.isArray(topic2) ? topic2 : [typeof topic2 === "string" ? topic2 : null];
@@ -94,20 +78,15 @@ async function etherscanGetLogs(f: LogFilter): Promise<{ blockNumber: string; da
   return out;
 }
 
-/* getLogs with a fallback chain: primary RPC (Ankr) → public Base RPC →
-   Etherscan API (free tier), so one dead/rate-limited provider never
-   freezes the scanners again. */
+/* getLogs through every RPC endpoint (utils/rpc.ts: env URLs → Alchemy →
+   public Base nodes), then Etherscan's own expansion of topic-OR filters,
+   so one dead/rate-limited provider never freezes the scanners again. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getLogsFallback(filter: LogFilter): Promise<any[]> {
   try {
-    return await rpcAt(RPC_URL, "eth_getLogs", [filter]);
+    return await baseRpc("eth_getLogs", [filter]);
   } catch (e1) {
-    console.warn("[Scanner] primary RPC getLogs failed, trying public RPC:", (e1 as Error).message);
-  }
-  try {
-    return await rpcAt(PUBLIC_RPC, "eth_getLogs", [filter]);
-  } catch (e2) {
-    console.warn("[Scanner] public RPC getLogs failed:", (e2 as Error).message);
+    console.warn("[Scanner] every RPC endpoint failed getLogs:", (e1 as Error).message);
   }
   if (ETHERSCAN_KEY) {
     return await etherscanGetLogs(filter);
@@ -207,7 +186,7 @@ async function reconcileCandles(sb: any) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function refreshCandles(sb: any, wethPriceUsd: number) {
-  if (!RPC_URL || !wethPriceUsd) return;
+  if (!wethPriceUsd) return;
 
   const { data: st } = await sb.from("scan_state").select("block_number, updated_at").eq("key", "price_last_block").single();
   const cursor = Number(st?.block_number || 0);
@@ -216,12 +195,7 @@ async function refreshCandles(sb: any, wethPriceUsd: number) {
   // normal traffic; this belt just prevents RPC hammering).
   if (st?.updated_at && Date.now() - new Date(st.updated_at).getTime() < 60 * 1000) return;
 
-  let latest;
-  try {
-    latest = await rpc("eth_getBlockByNumber", ["latest", false]);
-  } catch {
-    latest = await rpcAt(PUBLIC_RPC, "eth_getBlockByNumber", ["latest", false]);
-  }
+  const latest = await rpc("eth_getBlockByNumber", ["latest", false]);
   const latestBn = parseInt(latest.number, 16);
   const latestTs = parseInt(latest.timestamp, 16);
   if (latestBn <= cursor) return;
@@ -254,7 +228,7 @@ async function refreshCandles(sb: any, wethPriceUsd: number) {
     }
   }
   if (to < from) {
-    console.error(`[Scanner] price backfill made NO progress from block ${from} — check RPC_URL / getLogs limits`);
+    console.error(`[Scanner] price backfill made NO progress from block ${from} — check the RPC endpoints / getLogs limits`);
     return; // nothing scanned this round — retry next invocation
   }
   console.log(`[Scanner] price backfill advanced ${from}→${to} (${logs.length} swaps)`);
