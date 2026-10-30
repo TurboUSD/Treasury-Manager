@@ -177,8 +177,13 @@ const client = createPublicClient({
   transport: baseTransport(),
 });
 
-// ── Cache TTL (5 minutes) ──────────────────────────────────────────────────
-const CACHE_TTL_MS = 5 * 60 * 1000;
+// ── Cache TTL (20 minutes) ─────────────────────────────────────────────────
+// This MUST move together with how often the caller asks (tusd_web's
+// getTreasuryData revalidate). Leaving it at 5 minutes while the caller only
+// asks every 20 would be WORSE than before: every single request would find
+// the cache expired and trigger the full on-chain rebuild, instead of one
+// rebuild in every four requests.
+const CACHE_TTL_MS = 20 * 60 * 1000;
 
 // ── Madrid timezone date formatting ────────────────────────────────────────
 function toMadridDate(ts: number): string {
@@ -218,6 +223,51 @@ export async function OPTIONS() {
   });
 }
 
+// ── Operation totals ───────────────────────────────────────────────────────
+// Three numbers for the tooltips, each summed from the WHOLE operations
+// table. They used to be recomputed on every request, cache hit or miss:
+// two full-table reads through PostgREST, each one its own line in Supabase's
+// log ingestion, for figures that only move when a rebuild inserts a row.
+// They are computed once per rebuild now and kept in the cache row.
+
+type OperationTotals = {
+  treasuryBurnedTotal: number;
+  buybackWethTusd: number;
+  buybackUsdcTusd: number;
+};
+
+const TOTAL_KEYS: (keyof OperationTotals)[] = [
+  "treasuryBurnedTotal",
+  "buybackWethTusd",
+  "buybackUsdcTusd",
+];
+
+/** True when a cache row already carries the totals (rows written before
+ *  this change do not, and those callers fall back to reading them). */
+function hasStoredTotals(data: any): data is OperationTotals {
+  return !!data && TOTAL_KEYS.every((k) => typeof data[k] === "number");
+}
+
+/** The totals, straight from the operations table. Two full reads: only ever
+ *  called on a rebuild, or once on the first request after this deploy. */
+async function readOperationTotals(sb: any): Promise<OperationTotals> {
+  const [{ data: burnOps }, { data: buybackOps }] = await Promise.all([
+    sb.from("operations").select("sell_amount").eq("op_type", "Burn"),
+    sb.from("operations").select("buy_amount, sell_currency").eq("op_type", "Buyback"),
+  ]);
+  const treasuryBurnedTotal = (burnOps || []).reduce(
+    (sum: number, op: any) => sum + (op.sell_amount || 0), 0);
+  let buybackWethTusd = 0;
+  let buybackUsdcTusd = 0;
+  for (const op of buybackOps || []) {
+    const amt = op.buy_amount || 0;
+    if ((op.sell_currency || "").toUpperCase() === "USDC") buybackUsdcTusd += amt;
+    else buybackWethTusd += amt;
+  }
+  return { treasuryBurnedTotal, buybackWethTusd, buybackUsdcTusd };
+}
+
+
 // ── Main GET handler ───────────────────────────────────────────────────────
 export async function GET() {
   try {
@@ -235,19 +285,17 @@ export async function GET() {
 
     // If cache is fresh, return it immediately (+ operations from DB)
     if (isFresh && cacheRow?.data && Object.keys(cacheRow.data).length > 0) {
-      const [{ data: ops }, { data: burnOps }, { data: buybackOps }] = await Promise.all([
+      // The three totals were worked out when the cache was built and live in
+      // the row. Only the operations list is read here -- one query, not four.
+      // The fallback covers the first request after this deploy, when the
+      // stored row predates them.
+      const stored = hasStoredTotals(cacheRow.data) ? cacheRow.data : null;
+      const [{ data: ops }, fallback] = await Promise.all([
         sb.from("operations").select("*").order("date_utc", { ascending: false }).limit(200),
-        sb.from("operations").select("sell_amount").eq("op_type", "Burn"),
-        sb.from("operations").select("buy_amount, sell_currency").eq("op_type", "Buyback"),
+        stored ? Promise.resolve(null) : readOperationTotals(sb),
       ]);
-      const treasuryBurnedTotal = (burnOps || []).reduce((sum: number, op: any) => sum + (op.sell_amount || 0), 0);
-      let buybackWethTusd = 0;
-      let buybackUsdcTusd = 0;
-      for (const op of buybackOps || []) {
-        const amt = op.buy_amount || 0;
-        if ((op.sell_currency || "").toUpperCase() === "USDC") buybackUsdcTusd += amt;
-        else buybackWethTusd += amt;
-      }
+      const { treasuryBurnedTotal, buybackWethTusd, buybackUsdcTusd } =
+        stored ?? fallback!;
 
       return NextResponse.json({
         ...cacheRow.data,
@@ -1011,46 +1059,33 @@ export async function GET() {
       currentBlock: Number(currentBlock),
     };
 
+    // 6. Aggregate totals from operations for tooltips.
+    //
+    // These two queries read the WHOLE operations table to add three numbers
+    // up in JavaScript, so they are computed HERE, once per rebuild, and
+    // stored in the cache row -- not on every request. They can only change
+    // when this rebuild inserts an operation, which is the only thing that
+    // ever writes to that table.
+    const totals = await readOperationTotals(sb);
+
     const { error: cacheErr } = await sb.from("treasury_cache").upsert(
       {
         key: "current",
-        data: cacheData,
+        data: { ...cacheData, ...totals },
         updated_at: new Date().toISOString(),
       },
       { onConflict: "key" },
     );
     if (cacheErr) console.error("Cache upsert failed:", cacheErr);
 
-    // 6. Get operations from DB
+    // 7. The operations list itself (bounded, and the only per-request read)
     const { data: ops } = await sb
       .from("operations")
       .select("*")
       .order("date_utc", { ascending: false })
       .limit(200);
 
-    // 7. Aggregate totals from operations for tooltips
-    // Treasury burns (op_type = Burn, from TreasuryManager)
-    const { data: burnOps } = await sb
-      .from("operations")
-      .select("sell_amount")
-      .eq("op_type", "Burn");
-    const treasuryBurnedTotal = (burnOps || []).reduce((sum, op) => sum + (op.sell_amount || 0), 0);
-
-    // Buybacks split by currency (op_type = Buyback)
-    const { data: buybackOps } = await sb
-      .from("operations")
-      .select("buy_amount, sell_currency")
-      .eq("op_type", "Buyback");
-    let buybackWethTusd = 0;
-    let buybackUsdcTusd = 0;
-    for (const op of buybackOps || []) {
-      const amt = op.buy_amount || 0;
-      if ((op.sell_currency || "").toUpperCase() === "USDC") {
-        buybackUsdcTusd += amt;
-      } else {
-        buybackWethTusd += amt;
-      }
-    }
+    const { treasuryBurnedTotal, buybackWethTusd, buybackUsdcTusd } = totals;
     const totalBuybackTusd = buybackWethTusd + buybackUsdcTusd;
 
     return NextResponse.json({
