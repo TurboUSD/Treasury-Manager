@@ -34,6 +34,10 @@ const LP_FEE_SOURCE = "0x33e2Eda238edcF470309b8c6D228986A1204c8f9" as const;
 
 // Staking contract (TUSD staking on Base)
 const STAKING_CONTRACT = "0x2a70a42BC0524aBCA9Bff59a51E7aAdB575DC89A" as const;
+// AMI 9000's operator wallet is read live (authorizedOperator), today 0x956FC5c2D871D4D2C90A38F948F89eDDFf1F914B.
+// The previous one, ami9000.base.eth, was compromised and replaced: it stays listed under Contracts and Wallets
+// as "Previous operator (retired)" so the old address is never lost.
+const AMI_OPERATOR_PREVIOUS = "0x2a248b2e5d22507c6b1ade62d92f59ad4516ced4" as const;
 
 // The active treasury address — change when v2 is deployed
 const ACTIVE_TREASURY =
@@ -4178,6 +4182,7 @@ const Home: NextPage = () => {
               ["Treasury Manager", TREASURY_V2],
               ["Owner", ownerAddr || "0x0000000000000000000000000000000000000000"],
               ["Operator", operatorAddr || "0x0000000000000000000000000000000000000000"],
+              ["Previous operator (retired)", AMI_OPERATOR_PREVIOUS],
             ] as [string, `0x${string}`][]
           ).map(([label, addr]) => {
             const BASE_NAMES: Record<string, string> = {
@@ -4189,6 +4194,14 @@ const Home: NextPage = () => {
               <div key={`${label}-${addr}`} className="flex justify-between items-center">
                 <span className="text-sm" style={{ color: TEXT_MUTED, fontWeight: 600 }}>
                   {label}
+                  {label === "Operator" ? (
+                    // AMI 9000's wallet changed after the old one was compromised: keep the old address on record
+                    <InfoTip align="left">
+                      AMI 9000&apos;s wallet, read live from the Treasury Manager. The previous one (ami9000.base.eth,
+                      0x2a24…ced4) was compromised and replaced; it is kept on the row below for the record and no longer
+                      has any role in the treasury.
+                    </InfoTip>
+                  ) : null}
                 </span>
                 {baseName ? (
                   <span className="flex items-center gap-1 text-sm">
