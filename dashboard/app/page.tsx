@@ -2174,8 +2174,8 @@ const Home: NextPage = () => {
       }
     };
     fetchData();
-    // Refresh every 5 minutes
-    const interval = setInterval(fetchData, 5 * 60 * 1000);
+    // Refresh every 10 minutes, only while the tab is visible (the API itself is rebuilt every 20)
+    const interval = setInterval(() => document.visibilityState === "visible" && fetchData(), 10 * 60 * 1000);
     return () => {
       cancelled = true;
       clearInterval(interval);

@@ -77,7 +77,8 @@ function start() {
   if (started) return;
   started = true;
   void refresh(true);
-  timer = setInterval(() => void refresh(!state.macro), 60_000);
+  // every two minutes, only while the tab is visible (turbousd.com's /api/live is itself cached that long)
+  timer = setInterval(() => document.visibilityState === "visible" && void refresh(!state.macro), 120_000);
 }
 
 export function useTusdLive(): State {

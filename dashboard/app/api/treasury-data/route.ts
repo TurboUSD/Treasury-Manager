@@ -6,6 +6,9 @@ import { getSupabaseAdmin } from "~~/utils/supabase";
 
 // Allow up to 60s (Vercel) — the chart delta scan may need a few extra seconds
 export const maxDuration = 60;
+/** the answer is kept at Vercel's edge ten minutes (the figures themselves are rebuilt every twenty, see
+ *  CACHE_TTL_MS), so the dashboard's polling and turbousd.com's reads cost no function run and no Supabase query */
+const EDGE_CACHE = { "Cache-Control": "public, s-maxage=600, stale-while-revalidate=1200" };
 
 // ── Contract addresses ─────────────────────────────────────────────────────
 const TREASURY_V1 = "0x3dbF93D110C677A1c063A600cb42940262f3BBd6";
@@ -306,7 +309,7 @@ export async function GET() {
         totalBuybackTusd: buybackWethTusd + buybackUsdcTusd,
         cached: true,
         cacheAge: Math.round(cacheAge / 1000),
-      });
+      }, { headers: EDGE_CACHE });
     }
 
     // 2. Fetch all live data from RPC (multicall for efficiency)
@@ -1097,7 +1100,7 @@ export async function GET() {
       totalBuybackTusd,
       cached: false,
       newOpsInserted: 0, // Operations written exclusively by AMI 9000
-    });
+    }, { headers: EDGE_CACHE });
   } catch (error) {
     console.error("Treasury data API error:", error);
     return NextResponse.json(

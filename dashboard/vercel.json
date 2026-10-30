@@ -5,5 +5,6 @@
       "path": "/api/widget-data",
       "schedule": "30 2 * * *"
     }
-  ]
+  ],
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- ."
 }
